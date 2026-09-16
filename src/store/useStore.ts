@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { DatabaseConnection, ApiDefinition, ApiKey, ApiRequestLog, SqlQuery } from '../types';
 import { mockConnections, mockApis, mockApiKeys, mockRequestLogs, mockQueries } from '../data/mockData';
 
@@ -43,7 +44,9 @@ interface AppState {
   removeToast: (id: string) => void;
 }
 
-export const useStore = create<AppState>((set) => ({
+export const useStore = create<AppState>()(
+  persist(
+    (set) => ({
   darkMode: true,
   toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
 
@@ -91,4 +94,16 @@ export const useStore = create<AppState>((set) => ({
     })),
   removeToast: (id) =>
     set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
-}));
+}),
+    {
+      name: 'sql-api-builder-storage',
+      partialize: (state) => ({
+        connections: state.connections,
+        apis: state.apis,
+        apiKeys: state.apiKeys,
+        queries: state.queries,
+        darkMode: state.darkMode,
+      }),
+    }
+  )
+);
