@@ -1,4 +1,5 @@
-import { getAppDbPool, getUserDbPool, testConnection } from '../config/database';
+import { getMysqlPool, getUserMysqlPool, testMysqlConnection } from './mysqlDatabase';
+import { getAppDbPool, getUserDbPool, testConnection as testSqlServerConnection } from './database';
 import { encryptCredential, decryptCredential } from '../utils/encryption';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -6,7 +7,7 @@ export interface DatabaseConnection {
   id: string;
   project_id: string;
   name: string;
-  type: string;
+  type: 'mysql' | 'sqlserver' | 'postgresql';
   host: string;
   port: number;
   database_name: string;
@@ -22,7 +23,7 @@ export interface DatabaseConnection {
 export interface CreateConnectionInput {
   project_id: string;
   name: string;
-  type: string;
+  type: 'mysql' | 'sqlserver' | 'postgresql';
   host: string;
   port: number;
   database_name: string;
@@ -37,103 +38,151 @@ export class DatabaseConnectionService {
    * Create a new database connection
    */
   async createConnection(input: CreateConnectionInput): Promise<DatabaseConnection> {
-    const pool = await getAppDbPool();
     const id = uuidv4();
-
-    // Encrypt the password
     const encrypted_password = await encryptCredential(input.password);
+    const now = new Date().toISOString();
 
-    const result = await pool.request()
-      .input('id', id)
-      .input('project_id', input.project_id)
-      .input('name', input.name)
-      .input('type', input.type)
-      .input('host', input.host)
-      .input('port', input.port)
-      .input('database_name', input.database_name)
-      .input('username', input.username)
-      .input('encrypted_password', encrypted_password)
-      .input('ssl_enabled', input.ssl_enabled)
-      .input('connection_timeout', input.connection_timeout)
-      .query(`
-        INSERT INTO database_connections (
-          id, project_id, name, type, host, port, database_name, 
-          username, encrypted_password, ssl_enabled, connection_timeout
-        ) OUTPUT INSERTED.*
-        VALUES (
-          @id, @project_id, @name, @type, @host, @port, @database_name,
-          @username, @encrypted_password, @ssl_enabled, @connection_timeout
-        )
-      `);
+    if (input.type === 'mysql') {
+      const pool = await getMysqlPool();
+      await pool.execute(
+        `INSERT INTO database_connections 
+         (id, project_id, name, type, host, port, database_name, username, encrypted_password, ssl_enabled, connection_timeout, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, input.project_id, input.name, input.type, input.host, input.port, input.database_name, input.username, encrypted_password, input.ssl_enabled, input.connection_timeout, now, now]
+      );
+    } else {
+      // SQL Server
+      const pool = await getAppDbPool();
+      await pool.request()
+        .input('id', id)
+        .input('project_id', input.project_id)
+        .input('name', input.name)
+        .input('type', input.type)
+        .input('host', input.host)
+        .input('port', input.port)
+        .input('database_name', input.database_name)
+        .input('username', input.username)
+        .input('encrypted_password', encrypted_password)
+        .input('ssl_enabled', input.ssl_enabled)
+        .input('connection_timeout', input.connection_timeout)
+        .query(`
+          INSERT INTO database_connections 
+          (id, project_id, name, type, host, port, database_name, username, encrypted_password, ssl_enabled, connection_timeout)
+          VALUES (@id, @project_id, @name, @type, @host, @port, @database_name, @username, @encrypted_password, @ssl_enabled, @connection_timeout)
+        `);
+    }
 
-    return this.formatConnection(result.recordset[0]);
+    return {
+      id,
+      project_id: input.project_id,
+      name: input.name,
+      type: input.type,
+      host: input.host,
+      port: input.port,
+      database_name: input.database_name,
+      username: input.username,
+      ssl_enabled: input.ssl_enabled,
+      connection_timeout: input.connection_timeout,
+      status: 'disconnected',
+      last_tested_at: null,
+      created_at: now,
+      updated_at: now,
+    };
   }
 
   /**
    * Get all connections for a project
    */
-  async getConnections(projectId: string): Promise<DatabaseConnection[]> {
-    const pool = await getAppDbPool();
-    const result = await pool.request()
-      .input('project_id', projectId)
-      .query('SELECT * FROM database_connections WHERE project_id = @project_id ORDER BY created_at DESC');
-
-    return result.recordset.map(this.formatConnection);
+  async getConnections(projectId: string, type: 'mysql' | 'sqlserver' = 'mysql'): Promise<DatabaseConnection[]> {
+    if (type === 'mysql') {
+      const pool = await getMysqlPool();
+      const [rows] = await pool.execute(
+        'SELECT * FROM database_connections WHERE project_id = ? ORDER BY created_at DESC',
+        [projectId]
+      );
+      return rows as DatabaseConnection[];
+    } else {
+      const pool = await getAppDbPool();
+      const result = await pool.request()
+        .input('project_id', projectId)
+        .query('SELECT * FROM database_connections WHERE project_id = @project_id ORDER BY created_at DESC');
+      return result.recordset;
+    }
   }
 
   /**
    * Get a single connection by ID
    */
-  async getConnection(id: string): Promise<DatabaseConnection | null> {
-    const pool = await getAppDbPool();
-    const result = await pool.request()
-      .input('id', id)
-      .query('SELECT * FROM database_connections WHERE id = @id');
-
-    if (result.recordset.length === 0) {
-      return null;
+  async getConnection(id: string, type: 'mysql' | 'sqlserver' = 'mysql'): Promise<DatabaseConnection | null> {
+    if (type === 'mysql') {
+      const pool = await getMysqlPool();
+      const [rows] = await pool.execute(
+        'SELECT * FROM database_connections WHERE id = ?',
+        [id]
+      );
+      const result = rows as any[];
+      return result.length > 0 ? result[0] : null;
+    } else {
+      const pool = await getAppDbPool();
+      const result = await pool.request()
+        .input('id', id)
+        .query('SELECT * FROM database_connections WHERE id = @id');
+      return result.recordset.length > 0 ? result.recordset[0] : null;
     }
-
-    return this.formatConnection(result.recordset[0]);
   }
 
   /**
    * Test a database connection
    */
-  async testConnection(id: string): Promise<{ success: boolean; error?: string }> {
-    const connection = await this.getConnection(id);
+  async testConnection(id: string, type: 'mysql' | 'sqlserver' = 'mysql'): Promise<{ success: boolean; error?: string }> {
+    const connection = await this.getConnection(id, type);
     if (!connection) {
       return { success: false, error: 'Connection not found' };
     }
 
     // Decrypt password
-    const pool = await getAppDbPool();
-    const dbResult = await pool.request()
-      .input('id', id)
-      .query('SELECT encrypted_password FROM database_connections WHERE id = @id');
-
-    const password = await decryptCredential(dbResult.recordset[0].encrypted_password);
+    const password = await decryptCredential(connection.encrypted_password);
 
     // Test the connection
-    const success = await testConnection({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database_name,
-      username: connection.username,
-      password,
-      ssl: connection.ssl_enabled,
-    });
+    let success: boolean;
+    if (type === 'mysql') {
+      success = await testMysqlConnection({
+        host: connection.host,
+        port: connection.port,
+        database: connection.database_name,
+        username: connection.username,
+        password,
+        ssl: connection.ssl_enabled,
+      });
+    } else {
+      success = await testSqlServerConnection({
+        host: connection.host,
+        port: connection.port,
+        database: connection.database_name,
+        username: connection.username,
+        password,
+        ssl: connection.ssl_enabled,
+      });
+    }
 
     // Update status
-    await pool.request()
-      .input('id', id)
-      .input('status', success ? 'connected' : 'error')
-      .input('last_tested_at', new Date())
-      .query(`
-        UPDATE database_connections 
-        SET status = @status, last_tested_at = @last_tested_at, updated_at = CURRENT_TIMESTAMP
-        WHERE id = @id
-      `);
+    const now = new Date().toISOString();
+    const status = success ? 'connected' : 'error';
+
+    if (type === 'mysql') {
+      const pool = await getMysqlPool();
+      await pool.execute(
+        'UPDATE database_connections SET status = ?, last_tested_at = ?, updated_at = ? WHERE id = ?',
+        [status, now, now, id]
+      );
+    } else {
+      const pool = await getAppDbPool();
+      await pool.request()
+        .input('id', id)
+        .input('status', status)
+        .input('last_tested_at', now)
+        .query('UPDATE database_connections SET status = @status, last_tested_at = @last_tested_at, updated_at = CURRENT_TIMESTAMP WHERE id = @id');
+    }
 
     if (!success) {
       return { success: false, error: 'Connection test failed' };
@@ -145,33 +194,27 @@ export class DatabaseConnectionService {
   /**
    * Delete a connection
    */
-  async deleteConnection(id: string): Promise<void> {
-    const pool = await getAppDbPool();
-    await pool.request()
-      .input('id', id)
-      .query('DELETE FROM database_connections WHERE id = @id');
+  async deleteConnection(id: string, type: 'mysql' | 'sqlserver' = 'mysql'): Promise<void> {
+    if (type === 'mysql') {
+      const pool = await getMysqlPool();
+      await pool.execute('DELETE FROM database_connections WHERE id = ?', [id]);
+    } else {
+      const pool = await getAppDbPool();
+      await pool.request()
+        .input('id', id)
+        .query('DELETE FROM database_connections WHERE id = @id');
+    }
   }
 
   /**
-   * Format database row to API response (never expose encrypted password)
+   * Get user database pool (for executing queries)
    */
-  private formatConnection(row: any): DatabaseConnection {
-    return {
-      id: row.id,
-      project_id: row.project_id,
-      name: row.name,
-      type: row.type,
-      host: row.host,
-      port: row.port,
-      database_name: row.database_name,
-      username: row.username,
-      ssl_enabled: row.ssl_enabled,
-      connection_timeout: row.connection_timeout,
-      status: row.status,
-      last_tested_at: row.last_tested_at,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    };
+  async getUserDbPool(connectionId: string, type: 'mysql' | 'sqlserver' = 'mysql') {
+    if (type === 'mysql') {
+      return getUserMysqlPool(connectionId);
+    } else {
+      return getUserDbPool(connectionId);
+    }
   }
 }
 

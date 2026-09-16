@@ -35,7 +35,7 @@ export const DatabaseConnections: React.FC = () => {
     name: '',
     type: 'sqlserver',
     host: '',
-    port: 1433,
+    port: 3306,
     database: '',
     username: '',
     password: '',
@@ -71,7 +71,7 @@ export const DatabaseConnections: React.FC = () => {
     }
     setShowForm(false);
     setEditingId(null);
-    setForm({ name: '', type: 'sqlserver', host: '', port: 1433, database: '', username: '', password: '', ssl: true, timeout: 30 });
+    setForm({ name: '', type: 'mysql', host: '', port: 3306, database: '', username: '', password: '', ssl: false, timeout: 30 });
   };
 
   const handleEdit = (conn: typeof connections[0]) => {
@@ -98,7 +98,7 @@ export const DatabaseConnections: React.FC = () => {
           <p className="text-gray-400 mt-1">Manage your database connections securely</p>
         </div>
         <button
-          onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', type: 'sqlserver', host: '', port: 1433, database: '', username: '', password: '', ssl: true, timeout: 30 }); }}
+          onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', type: 'mysql', host: '', port: 3306, database: '', username: '', password: '', ssl: false, timeout: 30 }); }}
           className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
         >
           <Plus className="w-4 h-4" />
@@ -145,9 +145,9 @@ export const DatabaseConnections: React.FC = () => {
                   onChange={(e) => setForm({ ...form, type: e.target.value as 'sqlserver' | 'postgresql' | 'mysql' })}
                   className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="mysql">MySQL</option>
                   <option value="sqlserver">Microsoft SQL Server</option>
                   <option value="postgresql" disabled>PostgreSQL (Coming Soon)</option>
-                  <option value="mysql" disabled>MySQL (Coming Soon)</option>
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-4">

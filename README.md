@@ -63,9 +63,49 @@ SQL API Builder allows you to:
 
 ### Prerequisites
 
+**Option 1: MySQL (Recommended for local development)**
+- Node.js 18+ and npm
+- MySQL 8.0+ (or 5.7+)
+- MySQL client (MySQL Workbench, phpMyAdmin, or command line)
+
+**Option 2: SQL Server**
 - Node.js 18+ and npm
 - SQL Server (2019+ recommended)
 - SQL Server authentication enabled
+
+### MySQL Quick Setup (Recommended)
+
+**Linux/macOS:**
+```bash
+chmod +x setup-mysql.sh
+./setup-mysql.sh
+```
+
+**Windows:**
+```bash
+setup-mysql.bat
+```
+
+The setup script will:
+1. Ask for your MySQL credentials
+2. Create the database
+3. Run migrations
+4. Install dependencies
+5. Generate secure encryption keys
+
+Then start the application:
+```bash
+# Terminal 1 - Backend
+cd server
+npm run dev
+
+# Terminal 2 - Frontend
+npm run dev
+```
+
+Visit http://localhost:3000
+
+📚 **Detailed MySQL setup guide**: See [MYSQL_SETUP_GUIDE.md](./MYSQL_SETUP_GUIDE.md)
 
 ### 1. Install Dependencies
 
