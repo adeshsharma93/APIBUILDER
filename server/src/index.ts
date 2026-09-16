@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import connectionsRouter from './routes/connections';
 import apiExecutionRouter from './routes/apiExecution';
 import { getAppDbPool } from './config/database';
+import { getMysqlPool } from './config/mysqlDatabase';
 
 dotenv.config();
 
@@ -54,14 +55,22 @@ app.use((req: express.Request, res: express.Response) => {
 // Start server
 async function startServer() {
   try {
-    // Test database connection
-    await getAppDbPool();
-    console.log('✅ Database connection established');
+    // Determine database type from environment
+    const dbType = process.env.DB_TYPE || 'mysql';
+    
+    if (dbType === 'mysql') {
+      await getMysqlPool();
+      console.log('✅ MySQL database connection established');
+    } else {
+      await getAppDbPool();
+      console.log('✅ SQL Server database connection established');
+    }
 
     app.listen(PORT, () => {
       console.log(`🚀 SQL API Builder Server running on port ${PORT}`);
       console.log(`📝 API Documentation: http://localhost:${PORT}/api/apis`);
       console.log(`💚 Health check: http://localhost:${PORT}/health`);
+      console.log(`🗄️  Database type: ${dbType.toUpperCase()}`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

@@ -1,10 +1,11 @@
+import { getUserMysqlPool } from '../config/mysqlDatabase';
 import { getUserDbPool } from '../config/database';
-import { validateSql, validateParameterType, convertParameterValue, addPagination, getCountQuery } from '../utils/sqlValidator';
-import { getAppDbPool } from '../config/database';
-import sql from 'mssql';
+import { validateSql, validateParameterType, convertParameterValue } from '../utils/sqlValidator';
+import { getMysqlPool, getAppDbPool } from '../config/database';
 
 export interface ExecuteQueryInput {
   connectionId: string;
+  dbType: 'mysql' | 'sqlserver';
   sql: string;
   parameters: Record<string, unknown>;
   page?: number;
@@ -50,49 +51,21 @@ export class ApiExecutionService {
         };
       }
 
-      // Get database connection pool
-      const pool = await getUserDbPool(input.connectionId);
-
-      // Create request with parameters
-      const request = pool.request();
-
-      // Set timeout
-      if (input.timeout) {
-        request.timeout = input.timeout * 1000;
+      let result: any[];
+      
+      if (input.dbType === 'mysql') {
+        result = await this.executeMysqlQuery(input, validation.isSelect);
+      } else {
+        result = await this.executeSqlServerQuery(input, validation.isSelect);
       }
 
-      // Add parameters (parameterized query - prevents SQL injection)
-      for (const [name, value] of Object.entries(input.parameters)) {
-        if (value !== undefined && value !== null) {
-          request.input(name, value);
-        }
-      }
-
-      let querySql = input.sql;
-
-      // Add pagination if requested
-      if (input.page && input.pageSize && validation.isSelect) {
-        querySql = addPagination(querySql, input.page, input.pageSize);
-      }
-
-      // Execute query
-      const result = await request.query(querySql);
       const executionTime = Date.now() - startTime;
 
       // Get total count for pagination
       let pagination = undefined;
       if (input.page && input.pageSize && validation.isSelect) {
         try {
-          const countRequest = pool.request();
-          for (const [name, value] of Object.entries(input.parameters)) {
-            if (value !== undefined && value !== null) {
-              countRequest.input(name, value);
-            }
-          }
-          const countQuery = getCountQuery(input.sql);
-          const countResult = await countRequest.query(countQuery);
-          const total = countResult.recordset[0].total;
-
+          const total = await this.getTotalCount(input);
           pagination = {
             page: input.page,
             pageSize: input.pageSize,
@@ -100,15 +73,14 @@ export class ApiExecutionService {
             totalPages: Math.ceil(total / input.pageSize),
           };
         } catch (countError) {
-          // If count fails, still return data
           console.error('Count query failed:', countError);
         }
       }
 
       return {
         success: true,
-        data: result.recordset,
-        rowCount: result.recordset.length,
+        data: result,
+        rowCount: result.length,
         executionTime,
         pagination,
       };
@@ -116,7 +88,7 @@ export class ApiExecutionService {
       const executionTime = Date.now() - startTime;
 
       // Handle timeout
-      if (error.code === 'ETIMEOUT' || error.message?.includes('timeout')) {
+      if (error.code === 'ETIMEOUT' || error.code === 'PROTOCOL_SEQUENCE_TIMEOUT' || error.message?.includes('timeout')) {
         return {
           success: false,
           executionTime,
@@ -127,7 +99,6 @@ export class ApiExecutionService {
         };
       }
 
-      // Handle other errors (never expose raw SQL errors to users)
       console.error('Query execution error:', error);
       return {
         success: false,
@@ -141,18 +112,148 @@ export class ApiExecutionService {
   }
 
   /**
+   * Execute MySQL query
+   */
+  private async executeMysqlQuery(input: ExecuteQueryInput, isSelect: boolean): Promise<any[]> {
+    const pool = await getUserMysqlPool(input.connectionId);
+    
+    // Convert @paramName to ? for MySQL
+    let sql = input.sql;
+    const paramValues: any[] = [];
+    
+    // Extract parameter names in order
+    const paramRegex = /@(\w+)/g;
+    const paramNames: string[] = [];
+    let match;
+    while ((match = paramRegex.exec(sql)) !== null) {
+      if (!paramNames.includes(match[1])) {
+        paramNames.push(match[1]);
+      }
+    }
+    
+    // Replace @paramName with ?
+    sql = sql.replace(/@\w+/g, '?');
+    
+    // Add parameter values in order
+    for (const name of paramNames) {
+      if (input.parameters[name] !== undefined) {
+        paramValues.push(input.parameters[name]);
+      }
+    }
+    
+    // Add pagination for MySQL
+    if (input.page && input.pageSize && isSelect) {
+      const offset = (input.page - 1) * input.pageSize;
+      sql += `\nLIMIT ${input.pageSize} OFFSET ${offset}`;
+    }
+    
+    const [rows] = await pool.execute(sql, paramValues);
+    return rows as any[];
+  }
+
+  /**
+   * Execute SQL Server query
+   */
+  private async executeSqlServerQuery(input: ExecuteQueryInput, isSelect: boolean): Promise<any[]> {
+    const pool = await getUserDbPool(input.connectionId);
+    const request = pool.request();
+
+    if (input.timeout) {
+      request.timeout = input.timeout * 1000;
+    }
+
+    // Add parameters
+    for (const [name, value] of Object.entries(input.parameters)) {
+      if (value !== undefined && value !== null) {
+        request.input(name, value);
+      }
+    }
+
+    let sql = input.sql;
+
+    // Add pagination for SQL Server
+    if (input.page && input.pageSize && isSelect) {
+      const offset = (input.page - 1) * input.pageSize;
+      if (!/ORDER\s+BY/i.test(sql)) {
+        sql += '\nORDER BY (SELECT NULL)';
+      }
+      sql += `\nOFFSET ${offset} ROWS\nFETCH NEXT ${input.pageSize} ROWS ONLY`;
+    }
+
+    const result = await request.query(sql);
+    return result.recordset;
+  }
+
+  /**
+   * Get total count for pagination
+   */
+  private async getTotalCount(input: ExecuteQueryInput): Promise<number> {
+    // Remove pagination and SELECT columns, replace with COUNT(*)
+    let countSql = input.sql
+      .replace(/ORDER\s+BY[\s\S]+$/i, '')
+      .replace(/LIMIT\s+\d+(\s+OFFSET\s+\d+)?/i, '')
+      .replace(/OFFSET\s+\d+\s+ROWS/i, '')
+      .replace(/FETCH\s+NEXT\s+\d+\s+ROWS\s+ONLY/i, '');
+
+    // Replace SELECT columns with COUNT(*)
+    countSql = countSql.replace(/SELECT\s+[\s\S]+?\s+FROM/i, 'SELECT COUNT(*) as total FROM');
+
+    if (input.dbType === 'mysql') {
+      const pool = await getUserMysqlPool(input.connectionId);
+      
+      // Convert @paramName to ? for MySQL
+      let sql = countSql;
+      const paramValues: any[] = [];
+      
+      const paramRegex = /@(\w+)/g;
+      const paramNames: string[] = [];
+      let match;
+      while ((match = paramRegex.exec(sql)) !== null) {
+        if (!paramNames.includes(match[1])) {
+          paramNames.push(match[1]);
+        }
+      }
+      
+      sql = sql.replace(/@\w+/g, '?');
+      
+      for (const name of paramNames) {
+        if (input.parameters[name] !== undefined) {
+          paramValues.push(input.parameters[name]);
+        }
+      }
+      
+      const [rows] = await pool.execute(sql, paramValues);
+      const result = rows as any[];
+      return result[0]?.total || 0;
+    } else {
+      const pool = await getUserDbPool(input.connectionId);
+      const request = pool.request();
+      
+      for (const [name, value] of Object.entries(input.parameters)) {
+        if (value !== undefined && value !== null) {
+          request.input(name, value);
+        }
+      }
+      
+      const result = await request.query(countSql);
+      return result.recordset[0]?.total || 0;
+    }
+  }
+
+  /**
    * Execute a saved API definition
    */
   async executeApi(apiId: string, parameters: Record<string, unknown>, page?: number, pageSize?: number): Promise<QueryResult> {
-    const pool = await getAppDbPool();
+    const appPool = await getAppDbPool();
 
     // Load API definition
-    const apiResult = await pool.request()
+    const apiResult = await appPool.request()
       .input('api_id', apiId)
       .query(`
-        SELECT a.*, q.sql_text, q.parameters as query_parameters, q.connection_id
+        SELECT a.*, q.sql_text, q.parameters as query_parameters, q.connection_id, dc.type as db_type
         FROM apis a
         JOIN sql_queries q ON a.query_id = q.id
+        JOIN database_connections dc ON q.connection_id = dc.id
         WHERE a.id = @api_id AND a.status = 'published'
       `);
 
@@ -193,7 +294,6 @@ export class ApiExecutionService {
           };
         }
 
-        // Convert parameter to correct type
         parameters[param.name] = convertParameterValue(value, param.type);
       }
     }
@@ -201,6 +301,7 @@ export class ApiExecutionService {
     // Execute query
     return this.executeQuery({
       connectionId: api.connection_id,
+      dbType: api.db_type,
       sql: api.sql_text,
       parameters,
       page: page || (api.pagination_enabled ? 1 : undefined),
