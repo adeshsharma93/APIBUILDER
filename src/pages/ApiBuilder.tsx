@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Editor from '@monaco-editor/react';
+import { SqlEditorComponent } from '../components/SqlEditor';
 import {
   ArrowLeft,
   Save,
@@ -191,21 +191,10 @@ export const ApiBuilder: React.FC = () => {
                 <p className="text-xs text-gray-500 mt-1">Write the SQL query for this API. Use @paramName for parameters.</p>
               </div>
               <div className="h-[350px]">
-                <Editor
-                  height="100%"
-                  defaultLanguage="sql"
+                <SqlEditorComponent
                   value={form.sql}
-                  onChange={(value) => setForm({ ...form, sql: value || '' })}
-                  theme="vs-dark"
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    lineNumbers: 'on',
-                    scrollBeyondLastLine: false,
-                    wordWrap: 'on',
-                    padding: { top: 12 },
-                    automaticLayout: true,
-                  }}
+                  onChange={(value) => setForm({ ...form, sql: value })}
+                  height="100%"
                 />
               </div>
               <div className="p-4 border-t border-gray-800">

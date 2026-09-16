@@ -17,7 +17,7 @@ import {
   Terminal,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import Editor from '@monaco-editor/react';
+
 
 export const ApiDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -361,20 +361,9 @@ export const ApiDetail: React.FC = () => {
                       <span className="text-white font-mono">{testResult.time}ms</span>
                     </span>
                   </div>
-                  <Editor
-                    height="300px"
-                    defaultLanguage="json"
-                    value={JSON.stringify(testResult.data, null, 2)}
-                    theme="vs-dark"
-                    options={{
-                      readOnly: true,
-                      minimap: { enabled: false },
-                      fontSize: 12,
-                      lineNumbers: 'on',
-                      scrollBeyondLastLine: false,
-                      automaticLayout: true,
-                    }}
-                  />
+                  <pre className="text-xs font-mono text-gray-300 bg-[#0d1117] border border-gray-700 rounded-lg p-4 overflow-auto" style={{ height: '300px' }}>
+                    {JSON.stringify(testResult.data, null, 2)}
+                  </pre>
                 </div>
               ) : (
                 <div className="text-center py-16">

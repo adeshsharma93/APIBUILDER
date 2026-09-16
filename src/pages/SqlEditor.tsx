@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import Editor from '@monaco-editor/react';
+import { SqlEditorComponent } from '../components/SqlEditor';
 import {
   Play,
   Save,
@@ -176,23 +176,10 @@ ORDER BY CreatedAt DESC;`);
         <div className="lg:col-span-3 flex flex-col gap-4 min-h-0">
           {/* Monaco Editor */}
           <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden flex-1 min-h-[250px]">
-            <Editor
-              height="100%"
-              defaultLanguage="sql"
+            <SqlEditorComponent
               value={sql}
-              onChange={(value) => setSql(value || '')}
-              theme="vs-dark"
-              options={{
-                minimap: { enabled: false },
-                fontSize: 13,
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                wordWrap: 'on',
-                padding: { top: 12 },
-                automaticLayout: true,
-                suggestOnTriggerCharacters: true,
-                tabSize: 2,
-              }}
+              onChange={setSql}
+              height="100%"
             />
           </div>
 
