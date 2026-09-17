@@ -1,7 +1,6 @@
-import { getUserMysqlPool } from '../config/mysqlDatabase';
-import { getUserDbPool } from '../config/database';
+import { getUserMysqlPool, getMysqlPool } from '../config/mysqlDatabase';
+import { getUserDbPool, getAppDbPool } from '../config/database';
 import { validateSql, validateParameterType, convertParameterValue } from '../utils/sqlValidator';
-import { getMysqlPool, getAppDbPool } from '../config/database';
 
 export interface ExecuteQueryInput {
   connectionId: string;
@@ -159,7 +158,7 @@ export class ApiExecutionService {
     const request = pool.request();
 
     if (input.timeout) {
-      request.timeout = input.timeout * 1000;
+      (request as any).timeout = input.timeout * 1000;
     }
 
     // Add parameters
