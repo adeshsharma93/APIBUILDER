@@ -3,6 +3,16 @@ import { getAppDbPool, getUserDbPool, testConnection as testSqlServerConnection 
 import { encryptCredential, decryptCredential } from '../utils/encryption';
 import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * Convert ISO datetime to MySQL datetime format
+ * MySQL expects: 'YYYY-MM-DD HH:MM:SS'
+ * ISO format: 'YYYY-MM-DDTHH:MM:SS.sssZ'
+ */
+function toMysqlDateTime(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return d.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 export interface DatabaseConnection {
   id: string;
   project_id: string;
@@ -41,7 +51,8 @@ export class DatabaseConnectionService {
   async createConnection(input: CreateConnectionInput): Promise<DatabaseConnection> {
     const id = uuidv4();
     const encrypted_password = await encryptCredential(input.password);
-    const now = new Date().toISOString();
+    const now = new Date();
+    const mysqlNow = toMysqlDateTime(now);
 
     if (input.type === 'mysql') {
       const pool = await getMysqlPool();
@@ -49,7 +60,7 @@ export class DatabaseConnectionService {
         `INSERT INTO database_connections 
          (id, project_id, name, type, host, port, database_name, username, encrypted_password, ssl_enabled, connection_timeout, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, input.project_id, input.name, input.type, input.host, input.port, input.database_name, input.username, encrypted_password, input.ssl_enabled, input.connection_timeout, now, now]
+        [id, input.project_id, input.name, input.type, input.host, input.port, input.database_name, input.username, encrypted_password, input.ssl_enabled, input.connection_timeout, mysqlNow, mysqlNow]
       );
     } else {
       // SQL Server
@@ -86,8 +97,8 @@ export class DatabaseConnectionService {
       connection_timeout: input.connection_timeout,
       status: 'disconnected',
       last_tested_at: null,
-      created_at: now,
-      updated_at: now,
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
     };
   }
 
@@ -167,14 +178,15 @@ export class DatabaseConnectionService {
     }
 
     // Update status
-    const now = new Date().toISOString();
+    const now = new Date();
+    const mysqlNow = toMysqlDateTime(now);
     const status = success ? 'connected' : 'error';
 
     if (type === 'mysql') {
       const pool = await getMysqlPool();
       await pool.execute(
         'UPDATE database_connections SET status = ?, last_tested_at = ?, updated_at = ? WHERE id = ?',
-        [status, now, now, id]
+        [status, mysqlNow, mysqlNow, id]
       );
     } else {
       const pool = await getAppDbPool();
