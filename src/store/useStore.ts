@@ -3,7 +3,20 @@ import { persist } from 'zustand/middleware';
 import { DatabaseConnection, ApiDefinition, ApiKey, ApiRequestLog, SqlQuery } from '../types';
 import { mockConnections, mockApis, mockApiKeys, mockRequestLogs, mockQueries } from '../data/mockData';
 
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'developer' | 'viewer';
+}
+
 interface AppState {
+  // Authentication
+  currentUser: User | null;
+  isAuthenticated: boolean;
+  login: (user: User) => void;
+  logout: () => void;
+
   // Theme
   darkMode: boolean;
   toggleDarkMode: () => void;
@@ -47,6 +60,12 @@ interface AppState {
 export const useStore = create<AppState>()(
   persist(
     (set) => ({
+  // Authentication
+  currentUser: null,
+  isAuthenticated: false,
+  login: (user) => set({ currentUser: user, isAuthenticated: true }),
+  logout: () => set({ currentUser: null, isAuthenticated: false }),
+
   darkMode: true,
   toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
 
@@ -98,6 +117,8 @@ export const useStore = create<AppState>()(
     {
       name: 'sql-api-builder-storage',
       partialize: (state) => ({
+        currentUser: state.currentUser,
+        isAuthenticated: state.isAuthenticated,
         connections: state.connections,
         apis: state.apis,
         apiKeys: state.apiKeys,
