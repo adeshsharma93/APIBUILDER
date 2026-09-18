@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DatabaseConnection, ApiDefinition, ApiKey, ApiRequestLog, SqlQuery } from '../types';
-import { mockConnections, mockApis, mockApiKeys, mockRequestLogs, mockQueries } from '../data/mockData';
 
 interface User {
   id: string;
@@ -30,26 +29,31 @@ interface AppState {
   addConnection: (conn: DatabaseConnection) => void;
   updateConnection: (id: string, conn: Partial<DatabaseConnection>) => void;
   removeConnection: (id: string) => void;
+  setConnections: (connections: DatabaseConnection[]) => void;
 
   // APIs
   apis: ApiDefinition[];
   addApi: (api: ApiDefinition) => void;
   updateApi: (id: string, api: Partial<ApiDefinition>) => void;
   removeApi: (id: string) => void;
+  setApis: (apis: ApiDefinition[]) => void;
 
   // API Keys
   apiKeys: ApiKey[];
   addApiKey: (key: ApiKey) => void;
   updateApiKey: (id: string, key: Partial<ApiKey>) => void;
   removeApiKey: (id: string) => void;
+  setApiKeys: (apiKeys: ApiKey[]) => void;
 
   // Logs
   requestLogs: ApiRequestLog[];
+  setRequestLogs: (requestLogs: ApiRequestLog[]) => void;
 
   // Queries
   queries: SqlQuery[];
   addQuery: (query: SqlQuery) => void;
   updateQuery: (id: string, query: Partial<SqlQuery>) => void;
+  setQueries: (queries: SqlQuery[]) => void;
 
   // Toast
   toasts: Array<{ id: string; type: 'success' | 'error' | 'info' | 'warning'; message: string }>;
@@ -72,7 +76,7 @@ export const useStore = create<AppState>()(
   sidebarCollapsed: false,
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
-  connections: mockConnections,
+  connections: [],
   addConnection: (conn) => set((state) => ({ connections: [...state.connections, conn] })),
   updateConnection: (id, conn) =>
     set((state) => ({
@@ -80,31 +84,36 @@ export const useStore = create<AppState>()(
     })),
   removeConnection: (id) =>
     set((state) => ({ connections: state.connections.filter((c) => c.id !== id) })),
+  setConnections: (connections) => set({ connections }),
 
-  apis: mockApis,
+  apis: [],
   addApi: (api) => set((state) => ({ apis: [...state.apis, api] })),
   updateApi: (id, api) =>
     set((state) => ({
       apis: state.apis.map((a) => (a.id === id ? { ...a, ...api } : a)),
     })),
   removeApi: (id) => set((state) => ({ apis: state.apis.filter((a) => a.id !== id) })),
+  setApis: (apis) => set({ apis }),
 
-  apiKeys: mockApiKeys,
+  apiKeys: [],
   addApiKey: (key) => set((state) => ({ apiKeys: [...state.apiKeys, key] })),
   updateApiKey: (id, key) =>
     set((state) => ({
       apiKeys: state.apiKeys.map((k) => (k.id === id ? { ...k, ...key } : k)),
     })),
   removeApiKey: (id) => set((state) => ({ apiKeys: state.apiKeys.filter((k) => k.id !== id) })),
+  setApiKeys: (apiKeys) => set({ apiKeys }),
 
-  requestLogs: mockRequestLogs,
+  requestLogs: [],
+  setRequestLogs: (requestLogs) => set({ requestLogs }),
 
-  queries: mockQueries,
+  queries: [],
   addQuery: (query) => set((state) => ({ queries: [...state.queries, query] })),
   updateQuery: (id, query) =>
     set((state) => ({
       queries: state.queries.map((q) => (q.id === id ? { ...q, ...query } : q)),
     })),
+  setQueries: (queries) => set({ queries }),
 
   toasts: [],
   addToast: (type, message) =>

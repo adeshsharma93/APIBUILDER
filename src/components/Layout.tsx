@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
+import { DataInitializer } from './DataInitializer';
 import { useStore } from '../store/useStore';
 import { Moon, Sun, Bell, Search, User, LogOut } from 'lucide-react';
 
@@ -16,6 +17,7 @@ export const Layout: React.FC = () => {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'dark bg-gray-950 text-white' : 'bg-gray-50 text-gray-900'}`}>
+      <DataInitializer />
       <Sidebar />
       <div className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
         {/* Top bar */}

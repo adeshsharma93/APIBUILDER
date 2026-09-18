@@ -23,7 +23,9 @@ export interface QueryResult {
     totalPages: number;
   };
   rowCount?: number;
+  rowsAffected?: number;
   executionTime?: number;
+  message?: string;
   error?: {
     code: string;
     message: string;
@@ -113,7 +115,7 @@ export class ApiExecutionService {
   /**
    * Execute MySQL query
    */
-  private async executeMysqlQuery(input: ExecuteQueryInput, isSelect: boolean): Promise<any[]> {
+  private async executeMysqlQuery(input: ExecuteQueryInput, isSelect: boolean): Promise<any> {
     const pool = await getUserMysqlPool(input.connectionId);
     
     // Convert @paramName to ? for MySQL
@@ -140,20 +142,27 @@ export class ApiExecutionService {
       }
     }
     
-    // Add pagination for MySQL
+    // Add pagination for MySQL (only for SELECT)
     if (input.page && input.pageSize && isSelect) {
       const offset = (input.page - 1) * input.pageSize;
       sql += `\nLIMIT ${input.pageSize} OFFSET ${offset}`;
     }
     
-    const [rows] = await pool.execute(sql, paramValues);
-    return rows as any[];
+    const [result] = await pool.execute(sql, paramValues);
+    
+    // For SELECT queries, return rows
+    if (isSelect) {
+      return result as any[];
+    }
+    
+    // For INSERT/UPDATE/DELETE, return affected rows count
+    return (result as any).affectedRows || 0;
   }
 
   /**
    * Execute SQL Server query
    */
-  private async executeSqlServerQuery(input: ExecuteQueryInput, isSelect: boolean): Promise<any[]> {
+  private async executeSqlServerQuery(input: ExecuteQueryInput, isSelect: boolean): Promise<any> {
     const pool = await getUserDbPool(input.connectionId);
     const request = pool.request();
 
@@ -170,7 +179,7 @@ export class ApiExecutionService {
 
     let sql = input.sql;
 
-    // Add pagination for SQL Server
+    // Add pagination for SQL Server (only for SELECT)
     if (input.page && input.pageSize && isSelect) {
       const offset = (input.page - 1) * input.pageSize;
       if (!/ORDER\s+BY/i.test(sql)) {
@@ -180,7 +189,14 @@ export class ApiExecutionService {
     }
 
     const result = await request.query(sql);
-    return result.recordset;
+    
+    // For SELECT queries, return recordset
+    if (isSelect) {
+      return result.recordset;
+    }
+    
+    // For INSERT/UPDATE/DELETE, return rows affected
+    return result.rowsAffected[0] || 0;
   }
 
   /**

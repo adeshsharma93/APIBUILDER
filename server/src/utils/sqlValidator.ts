@@ -97,13 +97,18 @@ export function validateSql(sql: string, allowDangerous: boolean = false): Valid
 
   // Check if it's a SELECT statement
   const isSelect = normalizedSql.startsWith('SELECT') || normalizedSql.startsWith('WITH');
+  
+  // Check if it's a write operation
+  const isWrite = normalizedSql.startsWith('INSERT') || 
+                  normalizedSql.startsWith('UPDATE') || 
+                  normalizedSql.startsWith('DELETE');
 
   // If dangerous operations are allowed (admin mode), skip security checks
   if (allowDangerous) {
     return {
       valid: true,
       parameters,
-      isSelect,
+      isSelect: isSelect && !isWrite,
     };
   }
 
