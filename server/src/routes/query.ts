@@ -49,9 +49,11 @@ router.post('/test', async (req, res) => {
         columns: result.data && result.data.length > 0 ? Object.keys(result.data[0]) : [],
         rows: result.data || [],
         rowCount: result.rowCount || 0,
+        rowsAffected: result.rowsAffected,
         executionTime: result.executionTime || 0,
         connectionName: connection?.name || 'Unknown',
         pagination: result.pagination,
+        message: result.message,
       } : undefined,
       error: result.error,
     });
