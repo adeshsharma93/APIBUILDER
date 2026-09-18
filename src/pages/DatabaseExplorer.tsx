@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Database,
   ChevronRight,
@@ -10,21 +10,73 @@ import {
   Search,
   Copy,
   Eye,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
-import { mockTables } from '../data/mockData';
 import { TableSchema, ColumnSchema } from '../types';
 import { useStore } from '../store/useStore';
 
 export const DatabaseExplorer: React.FC = () => {
-  const { connections } = useStore();
+  const { connections, addToast } = useStore();
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>(connections[0]?.id || '');
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set(['dbo']));
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
   const [selectedTable, setSelectedTable] = useState<TableSchema | null>(null);
   const [activeTab, setActiveTab] = useState<'columns' | 'indexes' | 'preview'>('columns');
   const [searchTerm, setSearchTerm] = useState('');
+  const [tables, setTables] = useState<TableSchema[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const selectedConnection = connections.find(c => c.id === selectedConnectionId);
+
+  // Fetch tables when connection changes
+  useEffect(() => {
+    if (selectedConnectionId && selectedConnection?.status === 'connected') {
+      fetchTables();
+    } else {
+      setTables([]);
+      setError(null);
+    }
+  }, [selectedConnectionId]);
+
+  const fetchTables = async () => {
+    if (!selectedConnectionId) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // In a real app, this would call the backend API
+      // For now, we'll simulate the API call with mock data
+      // TODO: Replace with actual API call when backend is ready
+      
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      // Use mock data for now (will be replaced with real API call)
+      const { mockTables } = await import('../data/mockData');
+      setTables(mockTables);
+      
+      // Real API call (uncomment when backend is ready):
+      // const response = await fetch(`http://localhost:3001/api/schema/tables/${selectedConnectionId}?dbType=${selectedConnection?.type}`);
+      // const data = await response.json();
+      // if (data.success) {
+      //   setTables(data.data);
+      // } else {
+      //   throw new Error(data.error?.message || 'Failed to fetch tables');
+      // }
+      
+      addToast('success', `Loaded ${mockTables.length} tables from database`);
+    } catch (err: any) {
+      console.error('Error fetching tables:', err);
+      setError(err.message || 'Failed to load tables');
+      addToast('error', 'Failed to load database schema');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const toggleSchema = (schema: string) => {
     setExpandedSchemas((prev) => {
@@ -44,8 +96,8 @@ export const DatabaseExplorer: React.FC = () => {
     });
   };
 
-  const filteredTables = mockTables.filter(
-    (t) => t.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredTables = tables.filter(
+    (t: TableSchema) => t.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleColumnClick = (column: ColumnSchema) => {
@@ -87,6 +139,14 @@ export const DatabaseExplorer: React.FC = () => {
                 <span className="ml-auto text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
                   {selectedConnection.type}
                 </span>
+                <button
+                  onClick={fetchTables}
+                  disabled={isLoading}
+                  className="ml-2 p-1 hover:bg-gray-800 rounded transition-colors disabled:opacity-50"
+                  title="Refresh schema"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-gray-400 ${isLoading ? 'animate-spin' : ''}`} />
+                </button>
               </div>
             )}
             <div className="relative mt-3">
@@ -115,6 +175,30 @@ export const DatabaseExplorer: React.FC = () => {
                 <p className="text-xs text-gray-600 mt-1">Please connect to the database first</p>
                 <p className="text-xs text-gray-600 mt-1">Go to Database Connections to test the connection</p>
               </div>
+            ) : isLoading ? (
+              <div className="text-center py-8">
+                <Loader2 className="w-12 h-12 text-blue-500 mx-auto mb-3 animate-spin" />
+                <p className="text-sm text-gray-400">Loading schema...</p>
+                <p className="text-xs text-gray-600 mt-1">Fetching tables from database</p>
+              </div>
+            ) : error ? (
+              <div className="text-center py-8">
+                <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+                <p className="text-sm text-red-400">Failed to load schema</p>
+                <p className="text-xs text-gray-600 mt-1">{error}</p>
+                <button
+                  onClick={fetchTables}
+                  className="mt-3 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : tables.length === 0 ? (
+              <div className="text-center py-8">
+                <Database className="w-12 h-12 text-gray-700 mx-auto mb-3" />
+                <p className="text-sm text-gray-400">No tables found</p>
+                <p className="text-xs text-gray-600 mt-1">The database appears to be empty</p>
+              </div>
             ) : (
             <>
             {/* Schemas */}
@@ -135,7 +219,7 @@ export const DatabaseExplorer: React.FC = () => {
 
                 {expandedSchemas.has(schema) && (
                   <div className="ml-4 mt-1 space-y-0.5">
-                    {filteredTables.map((table) => (
+                    {filteredTables.map((table: TableSchema) => (
                       <div key={table.name}>
                         <button
                           onClick={() => {
@@ -160,7 +244,7 @@ export const DatabaseExplorer: React.FC = () => {
 
                         {expandedTables.has(table.name) && (
                           <div className="ml-6 mt-0.5 space-y-0.5">
-                            {table.columns.slice(0, 5).map((col) => (
+                            {table.columns.slice(0, 5).map((col: ColumnSchema) => (
                               <button
                                 key={col.name}
                                 onClick={() => handleColumnClick(col)}

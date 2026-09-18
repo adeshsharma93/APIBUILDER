@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import connectionsRouter from './routes/connections';
 import apiExecutionRouter from './routes/apiExecution';
+import schemaRouter from './routes/schema';
 import { getAppDbPool } from './config/database';
 import { getMysqlPool } from './config/mysqlDatabase';
 
@@ -28,6 +29,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/connections', connectionsRouter);
 app.use('/api', apiExecutionRouter);
+app.use('/api/schema', schemaRouter);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
