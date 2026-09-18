@@ -12,7 +12,7 @@ export interface DatabaseConnection {
   port: number;
   database_name: string;
   username: string;
-  encrypted_password: string;
+  encrypted_password?: string; // Optional - never expose in API responses
   ssl_enabled: boolean;
   connection_timeout: number;
   status: string;
@@ -142,7 +142,7 @@ export class DatabaseConnectionService {
     }
 
     // Decrypt password
-    const password = await decryptCredential(connection.encrypted_password);
+    const password = await decryptCredential(connection.encrypted_password!);
 
     // Test the connection
     let success: boolean;
