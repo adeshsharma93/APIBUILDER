@@ -1,5 +1,5 @@
-import { getMysqlPool, getUserMysqlPool, testMysqlConnection } from './mysqlDatabase';
-import { getAppDbPool, getUserDbPool, testConnection as testSqlServerConnection } from './database';
+import { getMysqlPool, getUserMysqlPool, testMysqlConnection } from '../config/mysqlDatabase';
+import { getAppDbPool, getUserDbPool, testConnection as testSqlServerConnection } from '../config/database';
 import { encryptCredential, decryptCredential } from '../utils/encryption';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -12,6 +12,7 @@ export interface DatabaseConnection {
   port: number;
   database_name: string;
   username: string;
+  encrypted_password: string;
   ssl_enabled: boolean;
   connection_timeout: number;
   status: string;
