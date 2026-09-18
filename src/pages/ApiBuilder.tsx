@@ -250,38 +250,56 @@ FETCH NEXT @pageSize ROWS ONLY;`;
     setQueryResult(null);
 
     try {
-      // Get the selected connection to determine database type
+      // Get the selected connection
       const selectedConnection = connections.find((c: any) => c.id === form.connectionId);
-      const dbType = selectedConnection?.type || 'mysql';
+      const isDemoConnection = form.connectionId === 'conn-demo';
 
-      // Call backend API to execute the query
-      const response = await fetch('http://localhost:3001/api/query/test', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          connectionId: form.connectionId,
-          sql: form.sql,
-          parameters: {},
-          dbType: dbType,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success && data.data) {
+      if (isDemoConnection) {
+        // Use mock query results for demo connection
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const { mockQueryResults } = await import('../data/mockData');
+        
         setQueryResult({
-          columns: data.data.columns,
-          rows: data.data.rows.slice(0, 5), // Show first 5 rows
-          rowCount: data.data.rowCount,
-          executionTime: data.data.executionTime,
-          connectionName: data.data.connectionName,
+          columns: mockQueryResults.columns,
+          rows: mockQueryResults.rows.slice(0, 5),
+          rowCount: mockQueryResults.rowCount,
+          executionTime: mockQueryResults.executionTime,
+          connectionName: selectedConnection?.name || 'Demo Database',
         });
 
-        addToast('success', `Query executed successfully - ${data.data.executionTime}ms, ${data.data.rowCount} rows`);
+        addToast('success', `Demo query executed - ${mockQueryResults.executionTime}ms, ${mockQueryResults.rowCount} rows`);
       } else {
-        throw new Error(data.error?.message || 'Query execution failed');
+        // Execute real query against production database
+        const dbType = selectedConnection?.type || 'mysql';
+
+        const response = await fetch('http://localhost:3001/api/query/test', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            connectionId: form.connectionId,
+            sql: form.sql,
+            parameters: {},
+            dbType: dbType,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.data) {
+          setQueryResult({
+            columns: data.data.columns,
+            rows: data.data.rows.slice(0, 5),
+            rowCount: data.data.rowCount,
+            executionTime: data.data.executionTime,
+            connectionName: data.data.connectionName,
+          });
+
+          addToast('success', `Query executed successfully - ${data.data.executionTime}ms, ${data.data.rowCount} rows`);
+        } else {
+          throw new Error(data.error?.message || 'Query execution failed');
+        }
       }
     } catch (error: any) {
       console.error('Error testing query:', error);

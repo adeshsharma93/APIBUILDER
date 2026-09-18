@@ -48,27 +48,27 @@ export const DatabaseExplorer: React.FC = () => {
     setError(null);
 
     try {
-      // In a real app, this would call the backend API
-      // For now, we'll simulate the API call with mock data
-      // TODO: Replace with actual API call when backend is ready
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 800));
+      // Check if this is the demo connection
+      const isDemoConnection = selectedConnectionId === 'conn-demo';
 
-      // Use mock data for now (will be replaced with real API call)
-      const { mockTables } = await import('../data/mockData');
-      setTables(mockTables);
-      
-      // Real API call (uncomment when backend is ready):
-      // const response = await fetch(`http://localhost:3001/api/schema/tables/${selectedConnectionId}?dbType=${selectedConnection?.type}`);
-      // const data = await response.json();
-      // if (data.success) {
-      //   setTables(data.data);
-      // } else {
-      //   throw new Error(data.error?.message || 'Failed to fetch tables');
-      // }
-      
-      addToast('success', `Loaded ${mockTables.length} tables from database`);
+      if (isDemoConnection) {
+        // Use mock data for demo connection
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const { mockTables } = await import('../data/mockData');
+        setTables(mockTables);
+        addToast('success', `Loaded ${mockTables.length} tables from demo database`);
+      } else {
+        // Fetch real schema from backend API for production connections
+        const response = await fetch(`http://localhost:3001/api/schema/tables/${selectedConnectionId}?dbType=${selectedConnection?.type}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          setTables(data.data);
+          addToast('success', `Loaded ${data.data.length} tables from ${selectedConnection?.name}`);
+        } else {
+          throw new Error(data.error?.message || 'Failed to fetch tables');
+        }
+      }
     } catch (err: any) {
       console.error('Error fetching tables:', err);
       setError(err.message || 'Failed to load tables');

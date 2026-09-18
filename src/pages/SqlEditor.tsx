@@ -14,12 +14,12 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { mockQueryResults, mockConnections } from '../data/mockData';
+import { mockConnections } from '../data/mockData';
 import { Link, useNavigate } from 'react-router-dom';
 
 export const SqlEditor: React.FC = () => {
   const navigate = useNavigate();
-  const { queries, addQuery, addToast } = useStore();
+  const { queries, addQuery, addToast, connections } = useStore();
   const [sql, setSql] = useState(`SELECT
     CustomerId,
     CustomerName,
@@ -31,11 +31,12 @@ FROM dbo.Customers
 WHERE Country = @country
   AND IsActive = 1
 ORDER BY CreatedAt DESC;`);
-  const [selectedConnection, setSelectedConnection] = useState(mockConnections[0].id);
+  const [selectedConnection, setSelectedConnection] = useState(connections[0]?.id || '');
   const [isExecuting, setIsExecuting] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [queryName, setQueryName] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [queryResults, setQueryResults] = useState<any>(null);
   const pageSize = 10;
 
   const handleExecute = useCallback(async () => {
@@ -43,12 +44,63 @@ ORDER BY CreatedAt DESC;`);
       addToast('error', 'Please enter a SQL query');
       return;
     }
+
+    if (!selectedConnection) {
+      addToast('error', 'Please select a database connection');
+      return;
+    }
+
     setIsExecuting(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setShowResults(true);
-    setIsExecuting(false);
-    addToast('success', `Query executed successfully — ${mockQueryResults.rowCount} rows in ${mockQueryResults.executionTime}ms`);
-  }, [sql, addToast]);
+    setShowResults(false);
+
+    try {
+      const isDemoConnection = selectedConnection === 'conn-demo';
+      const conn = connections.find((c: any) => c.id === selectedConnection);
+
+      if (isDemoConnection) {
+        // Use mock data for demo connection
+        await new Promise((r) => setTimeout(r, 800));
+        const { mockQueryResults } = await import('../data/mockData');
+        setQueryResults(mockQueryResults);
+        setShowResults(true);
+        addToast('success', `Demo query executed — ${mockQueryResults.rowCount} rows in ${mockQueryResults.executionTime}ms`);
+      } else {
+        // Execute real query against production database
+        const response = await fetch('http://localhost:3001/api/query/test', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            connectionId: selectedConnection,
+            sql: sql,
+            parameters: {},
+            dbType: conn?.type || 'mysql',
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.data) {
+          setQueryResults({
+            columns: data.data.columns,
+            rows: data.data.rows,
+            rowCount: data.data.rowCount,
+            executionTime: data.data.executionTime,
+          });
+          setShowResults(true);
+          addToast('success', `Query executed successfully — ${data.data.rowCount} rows in ${data.data.executionTime}ms`);
+        } else {
+          throw new Error(data.error?.message || 'Query execution failed');
+        }
+      }
+    } catch (error: any) {
+      console.error('Error executing query:', error);
+      addToast('error', error.message || 'Failed to execute query');
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [sql, selectedConnection, connections, addToast]);
 
   const handleSave = () => {
     if (!queryName.trim()) {
@@ -98,11 +150,11 @@ ORDER BY CreatedAt DESC;`);
     setSql(formatted);
   };
 
-  const paginatedRows = mockQueryResults.rows.slice(
+  const paginatedRows = queryResults?.rows.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
-  );
-  const totalPages = Math.ceil(mockQueryResults.rows.length / pageSize);
+  ) || [];
+  const totalPages = queryResults ? Math.ceil(queryResults.rows.length / pageSize) : 0;
 
   return (
     <div className="space-y-4 h-[calc(100vh-8rem)]">
@@ -115,7 +167,7 @@ ORDER BY CreatedAt DESC;`);
             onChange={(e) => setSelectedConnection(e.target.value)}
             className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            {mockConnections.filter(c => c.status === 'connected').map((conn) => (
+            {connections.filter((c: any) => c.status === 'connected').map((conn: any) => (
               <option key={conn.id} value={conn.id}>
                 {conn.name} ({conn.database})
               </option>
@@ -220,11 +272,11 @@ ORDER BY CreatedAt DESC;`);
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1.5 text-xs text-gray-400">
                     <Rows className="w-3.5 h-3.5" />
-                    <span>{mockQueryResults.rowCount} rows</span>
+                    <span>{queryResults?.rowCount || 0} rows</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs text-gray-400">
                     <Clock className="w-3.5 h-3.5" />
-                    <span>{mockQueryResults.executionTime}ms</span>
+                    <span>{queryResults?.executionTime || 0}ms</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs text-green-400">
                     <CheckCircle2 className="w-3.5 h-3.5" />
@@ -234,7 +286,7 @@ ORDER BY CreatedAt DESC;`);
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
-                      const csv = [mockQueryResults.columns.join(','), ...mockQueryResults.rows.map(r => r.join(','))].join('\n');
+                      const csv = [queryResults.columns.join(','), ...queryResults.rows.map((r: any) => r.join(','))].join('\n');
                       navigator.clipboard.writeText(csv);
                       addToast('success', 'Results copied to clipboard');
                     }}
@@ -249,7 +301,7 @@ ORDER BY CreatedAt DESC;`);
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-gray-800">
                     <tr>
-                      {mockQueryResults.columns.map((col) => (
+                      {queryResults?.columns.map((col: string) => (
                         <th key={col} className="text-left py-2 px-3 text-gray-400 font-medium whitespace-nowrap">
                           {col}
                         </th>
@@ -257,9 +309,9 @@ ORDER BY CreatedAt DESC;`);
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedRows.map((row, i) => (
+                    {paginatedRows.map((row: any[], i: number) => (
                       <tr key={i} className="border-t border-gray-800/50 hover:bg-gray-800/30">
-                        {row.map((cell, j) => (
+                        {row.map((cell: any, j: number) => (
                           <td key={j} className="py-2 px-3 text-gray-300 font-mono whitespace-nowrap">
                             {cell === null ? <span className="text-gray-600 italic">NULL</span> : String(cell)}
                           </td>
