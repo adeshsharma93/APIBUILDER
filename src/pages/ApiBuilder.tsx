@@ -10,18 +10,24 @@ import {
   AlertCircle,
   Plus,
   Trash2,
+  Database,
+  Clock,
+  Rows,
+  TestTube,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { mockConnections } from '../data/mockData';
+import { mockQueryResults } from '../data/mockData';
 import { QueryParameter } from '../types';
 
 export const ApiBuilder: React.FC = () => {
   const navigate = useNavigate();
-  const { addApi, addToast, apis } = useStore();
+  const { addApi, addToast, apis, connections } = useStore();
   const [step, setStep] = useState(1);
   const [testResult, setTestResult] = useState<any>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [testParams, setTestParams] = useState<Record<string, string>>({});
+  const [queryResult, setQueryResult] = useState<any>(null);
+  const [isQueryRunning, setIsQueryRunning] = useState(false);
 
   // Check if SQL was passed from SQL Editor
   const initialSql = localStorage.getItem('sql-api-builder-new-api-sql') || `SELECT
@@ -52,7 +58,7 @@ FETCH NEXT @pageSize ROWS ONLY;`;
     method: 'GET' as 'GET' | 'POST' | 'PUT' | 'DELETE',
     description: '',
     sql: initialSql,
-    connectionId: mockConnections[0].id,
+    connectionId: connections[0]?.id || '',
     authRequired: true,
     rateLimit: 100,
     rateLimitWindow: '1m',
@@ -229,6 +235,39 @@ FETCH NEXT @pageSize ROWS ONLY;`;
     setParameters((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Test query execution against selected database
+  const handleTestQuery = async () => {
+    if (!form.sql.trim()) {
+      addToast('error', 'Please write a SQL query first');
+      return;
+    }
+
+    if (!form.connectionId) {
+      addToast('error', 'Please select a database connection');
+      return;
+    }
+
+    setIsQueryRunning(true);
+    setQueryResult(null);
+
+    // Simulate query execution
+    await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 700));
+
+    const executionTime = Math.floor(30 + Math.random() * 120);
+
+    // Use mock results for demo
+    setQueryResult({
+      columns: mockQueryResults.columns,
+      rows: mockQueryResults.rows.slice(0, 5), // Show first 5 rows
+      rowCount: mockQueryResults.rowCount,
+      executionTime: executionTime,
+      connectionName: connections.find((c: any) => c.id === form.connectionId)?.name || 'Unknown',
+    });
+
+    setIsQueryRunning(false);
+    addToast('success', `Query executed successfully - ${executionTime}ms, ${mockQueryResults.rowCount} rows`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -299,24 +338,128 @@ FETCH NEXT @pageSize ROWS ONLY;`;
         {/* Main Form */}
         <div className="lg:col-span-2 space-y-6">
           {step === 1 && (
-            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-              <div className="p-4 border-b border-gray-800">
-                <h3 className="text-sm font-semibold text-white">SQL Query</h3>
-                <p className="text-xs text-gray-500 mt-1">Write the SQL query for this API. Use @paramName for parameters.</p>
+            <div className="space-y-4">
+              {/* Database Connection Selector */}
+              <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                <label className="flex items-center gap-2 text-sm font-semibold text-white mb-3">
+                  <Database className="w-4 h-4 text-blue-400" />
+                  Database Connection
+                </label>
+                <select
+                  value={form.connectionId}
+                  onChange={(e) => setForm({ ...form, connectionId: e.target.value })}
+                  className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select a database connection...</option>
+                  {connections.map((conn: any) => (
+                    <option key={conn.id} value={conn.id} disabled={conn.status !== 'connected'}>
+                      {conn.name} ({conn.database}) - {conn.type.toUpperCase()} {conn.status !== 'connected' ? '⚠️ Disconnected' : '✅'}
+                    </option>
+                  ))}
+                </select>
+                {connections.length === 0 && (
+                  <p className="text-xs text-amber-400 mt-2">
+                    No database connections found. Please create one in the Database Connections page.
+                  </p>
+                )}
               </div>
-              <div className="h-[350px]">
-                <SqlEditorComponent
-                  value={form.sql}
-                  onChange={(value) => setForm({ ...form, sql: value })}
-                  height="100%"
-                />
-              </div>
-              <div className="p-4 border-t border-gray-800">
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  <span>Only SELECT statements are allowed for public APIs. Use parameterized queries (@paramName).</span>
+
+              {/* SQL Query Editor */}
+              <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">SQL Query</h3>
+                    <p className="text-xs text-gray-500 mt-1">Write the SQL query for this API. Use @paramName for parameters.</p>
+                  </div>
+                  <button
+                    onClick={handleTestQuery}
+                    disabled={isQueryRunning || !form.connectionId}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg text-xs font-medium transition-colors"
+                  >
+                    {isQueryRunning ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Running...
+                      </>
+                    ) : (
+                      <>
+                        <TestTube className="w-3.5 h-3.5" />
+                        Test Query
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="h-[350px]">
+                  <SqlEditorComponent
+                    value={form.sql}
+                    onChange={(value) => setForm({ ...form, sql: value })}
+                    height="100%"
+                  />
+                </div>
+                <div className="p-4 border-t border-gray-800">
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>Only SELECT statements are allowed for public APIs. Use parameterized queries (@paramName).</span>
+                  </div>
                 </div>
               </div>
+
+              {/* Query Results Preview */}
+              {queryResult && (
+                <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                  <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <h3 className="text-sm font-semibold text-white">Query Results</h3>
+                      <div className="flex items-center gap-3 text-xs text-gray-400">
+                        <span className="flex items-center gap-1">
+                          <Rows className="w-3 h-3" />
+                          {queryResult.rowCount} rows
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {queryResult.executionTime}ms
+                        </span>
+                        <span className="flex items-center gap-1 text-green-400">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Success
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      Connected to: <span className="text-blue-400">{queryResult.connectionName}</span>
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto max-h-[300px]">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-gray-800">
+                        <tr>
+                          {queryResult.columns.map((col: string) => (
+                            <th key={col} className="text-left py-2 px-3 text-gray-400 font-medium whitespace-nowrap border-b border-gray-700">
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {queryResult.rows.map((row: any[], rowIndex: number) => (
+                          <tr key={rowIndex} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                            {row.map((cell: any, cellIndex: number) => (
+                              <td key={cellIndex} className="py-2 px-3 text-gray-300 font-mono whitespace-nowrap">
+                                {cell === null ? <span className="text-gray-600 italic">NULL</span> : String(cell)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="p-3 border-t border-gray-800 bg-gray-800/30">
+                    <p className="text-xs text-gray-500">
+                      Showing first {queryResult.rows.length} of {queryResult.rowCount} rows. Results are from the selected database connection.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -590,7 +733,7 @@ FETCH NEXT @pageSize ROWS ONLY;`;
                 onChange={(e) => setForm({ ...form, connectionId: e.target.value })}
                 className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
-                {mockConnections.filter(c => c.status === 'connected').map((conn) => (
+                {connections.filter((c: any) => c.status === 'connected').map((conn: any) => (
                   <option key={conn.id} value={conn.id}>{conn.name}</option>
                 ))}
               </select>

@@ -11,15 +11,20 @@ import {
   Copy,
   Eye,
 } from 'lucide-react';
-import { mockTables, mockConnections } from '../data/mockData';
+import { mockTables } from '../data/mockData';
 import { TableSchema, ColumnSchema } from '../types';
+import { useStore } from '../store/useStore';
 
 export const DatabaseExplorer: React.FC = () => {
+  const { connections } = useStore();
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string>(connections[0]?.id || '');
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set(['dbo']));
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
   const [selectedTable, setSelectedTable] = useState<TableSchema | null>(null);
   const [activeTab, setActiveTab] = useState<'columns' | 'indexes' | 'preview'>('columns');
   const [searchTerm, setSearchTerm] = useState('');
+
+  const selectedConnection = connections.find(c => c.id === selectedConnectionId);
 
   const toggleSchema = (schema: string) => {
     setExpandedSchemas((prev) => {
@@ -59,14 +64,32 @@ export const DatabaseExplorer: React.FC = () => {
         {/* Schema Tree */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-gray-800">
-            <div className="flex items-center gap-2 mb-3">
-              <Database className="w-4 h-4 text-blue-400" />
-              <span className="text-sm font-medium text-white">{mockConnections[0].database}</span>
-              <span className="ml-auto text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
-                {mockConnections[0].type}
-              </span>
+            {/* Connection Selector */}
+            <div className="mb-3">
+              <label className="block text-xs text-gray-400 mb-1.5">Database Connection</label>
+              <select
+                value={selectedConnectionId}
+                onChange={(e) => setSelectedConnectionId(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {connections.map((conn) => (
+                  <option key={conn.id} value={conn.id}>
+                    {conn.name} ({conn.database})
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="relative">
+
+            {selectedConnection && (
+              <div className="flex items-center gap-2 mt-3">
+                <Database className="w-4 h-4 text-blue-400" />
+                <span className="text-sm font-medium text-white">{selectedConnection.database}</span>
+                <span className="ml-auto text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
+                  {selectedConnection.type}
+                </span>
+              </div>
+            )}
+            <div className="relative mt-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
               <input
                 type="text"
@@ -79,6 +102,21 @@ export const DatabaseExplorer: React.FC = () => {
           </div>
 
           <div className="p-2 max-h-[600px] overflow-y-auto">
+            {!selectedConnection ? (
+              <div className="text-center py-8">
+                <Database className="w-12 h-12 text-gray-700 mx-auto mb-3" />
+                <p className="text-sm text-gray-400">No connection selected</p>
+                <p className="text-xs text-gray-600 mt-1">Please select a database connection</p>
+              </div>
+            ) : selectedConnection.status !== 'connected' ? (
+              <div className="text-center py-8">
+                <Database className="w-12 h-12 text-gray-700 mx-auto mb-3" />
+                <p className="text-sm text-gray-400">Connection not active</p>
+                <p className="text-xs text-gray-600 mt-1">Please connect to the database first</p>
+                <p className="text-xs text-gray-600 mt-1">Go to Database Connections to test the connection</p>
+              </div>
+            ) : (
+            <>
             {/* Schemas */}
             {['dbo'].map((schema) => (
               <div key={schema}>
@@ -148,6 +186,8 @@ export const DatabaseExplorer: React.FC = () => {
                 )}
               </div>
             ))}
+            </>
+            )}
           </div>
         </div>
 
