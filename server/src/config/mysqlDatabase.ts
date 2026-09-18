@@ -62,7 +62,7 @@ export async function getUserMysqlPool(connectionId: string): Promise<mysql.Pool
     waitForConnections: true,
     connectionLimit: 5,
     queueLimit: 0,
-    ssl: conn.ssl_enabled ? {} : false,
+    ssl: conn.ssl_enabled ? {} : undefined,
   });
 
   userMysqlPools.set(connectionId, userPool);
@@ -87,7 +87,7 @@ export async function testMysqlConnection(config: {
       password: config.password,
       database: config.database,
       connectTimeout: 5000,
-      ssl: config.ssl ? {} : false,
+      ssl: config.ssl ? {} : undefined,
     });
 
     await connection.execute('SELECT 1');
