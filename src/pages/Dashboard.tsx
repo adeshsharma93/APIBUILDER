@@ -25,12 +25,17 @@ import {
   Bar,
 } from 'recharts';
 import { useStore } from '../store/useStore';
-import { chartData } from '../data/mockData';
 import { Link } from 'react-router-dom';
 import { SetupWizard } from '../components/SetupWizard';
+import { dashboardApi } from '../services/api';
 
 export const Dashboard: React.FC = () => {
   const [showSetupWizard, setShowSetupWizard] = useState(false);
+  const [chartData, setChartData] = useState<any>({
+    requestsOverTime: [],
+    responseTimes: [],
+    topApis: [],
+  });
 
   useEffect(() => {
     // Show setup wizard on first visit
@@ -39,14 +44,34 @@ export const Dashboard: React.FC = () => {
       setShowSetupWizard(true);
       localStorage.setItem('sql-api-builder-has-visited', 'true');
     }
+
+    // Fetch real chart data from backend
+    const fetchChartData = async () => {
+      const data = await dashboardApi.getChartData();
+      if (data) {
+        setChartData(data);
+      }
+    };
+
+    fetchChartData();
   }, []);
+
   const { connections, apis, requestLogs } = useStore();
 
+  // Calculate real metrics from actual data
   const connectedCount = connections.filter((c) => c.status === 'connected').length;
   const publishedApis = apis.filter((a) => a.status === 'published').length;
-  const todayRequests = requestLogs.length * 1247; // Simulated
-  const failedRequests = requestLogs.filter((l) => l.statusCode >= 400).length * 89;
-  const avgResponseTime = 47;
+  
+  // Calculate today's requests from actual logs
+  const today = new Date().toDateString();
+  const todayLogs = requestLogs.filter((l) => new Date(l.timestamp).toDateString() === today);
+  const todayRequests = todayLogs.length;
+  const failedRequests = todayLogs.filter((l) => l.statusCode >= 400).length;
+  
+  // Calculate average response time from actual logs
+  const avgResponseTime = todayLogs.length > 0
+    ? Math.round(todayLogs.reduce((sum, l) => sum + l.responseTime, 0) / todayLogs.length)
+    : 0;
 
   const metrics = [
     {
