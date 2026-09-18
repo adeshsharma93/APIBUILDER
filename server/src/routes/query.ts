@@ -22,6 +22,12 @@ router.post('/test', async (req, res) => {
       });
     }
 
+    // Determine if this is a write operation
+    const sqlUpper = sql.trim().toUpperCase();
+    const isWriteOperation = sqlUpper.startsWith('INSERT') || 
+                             sqlUpper.startsWith('UPDATE') || 
+                             sqlUpper.startsWith('DELETE');
+    
     // Execute the query
     const result = await apiExecutionService.executeQuery({
       connectionId,
@@ -31,7 +37,7 @@ router.post('/test', async (req, res) => {
       page: 1,
       pageSize: 100, // Limit for testing
       timeout: 30,
-      allowDangerous: false, // Only allow SELECT for testing
+      allowDangerous: isWriteOperation, // Allow INSERT/UPDATE/DELETE for testing
     });
 
     // Get connection name for display
