@@ -38,6 +38,7 @@ router.post('/', async (req: Request, res: Response) => {
     // Accept both field name formats for flexibility
     const { 
       project_id, 
+      projectName,  // Project name from frontend
       name, 
       type, 
       host, 
@@ -52,8 +53,6 @@ router.post('/', async (req: Request, res: Response) => {
       timeout  // Alternative field name
     } = req.body;
 
-    // Use default project_id if not provided
-    const finalProjectId = project_id || 'default-project';
     const finalDatabaseName = database_name || database;
     const finalSsl = ssl_enabled !== undefined ? ssl_enabled : (ssl !== undefined ? ssl : true);
     const finalTimeout = connection_timeout || timeout || 30;
@@ -65,20 +64,76 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Ensure default project exists
-    try {
-      const { getAppDbPool } = await import('../config/database');
-      const pool = await getAppDbPool();
-      await pool.request()
-        .input('project_id', finalProjectId)
-        .input('name', 'Default Project')
-        .input('owner_id', 'default-user')
-        .query(`
-          IF NOT EXISTS (SELECT 1 FROM projects WHERE id = @project_id)
-          INSERT INTO projects (id, name, owner_id) VALUES (@project_id, @name, @owner_id)
-        `);
-    } catch (err) {
-      console.log('Note: Could not create default project (may already exist)');
+    // Get or create project
+    let finalProjectId = project_id;
+    
+    // First, ensure default system user exists
+    const { getMysqlPool } = await import('../config/mysqlDatabase');
+    const pool = await getMysqlPool();
+    const { v4: uuidv4 } = await import('uuid');
+    const { hashPassword } = await import('../utils/encryption');
+    
+    const defaultUserId = '00000000-0000-0000-0000-000000000000';
+    
+    // Check if default user exists
+    const [existingUsers] = await pool.execute(
+      'SELECT id FROM users WHERE id = ?',
+      [defaultUserId]
+    );
+    
+    if ((existingUsers as any[]).length === 0) {
+      // Create default system user
+      const defaultPasswordHash = await hashPassword('system-default-password');
+      await pool.execute(
+        'INSERT INTO users (id, email, password_hash, name, role, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())',
+        [defaultUserId, 'system@sqlapi.dev', defaultPasswordHash, 'System User', 'admin', true]
+      );
+      console.log(`✅ Created default system user: ${defaultUserId}`);
+    }
+    
+    if (!finalProjectId && projectName) {
+      // Try to find existing project by name
+      const [existingProjects] = await pool.execute(
+        'SELECT id FROM projects WHERE name = ?',
+        [projectName]
+      );
+      
+      if ((existingProjects as any[]).length > 0) {
+        // Use existing project
+        finalProjectId = (existingProjects as any[])[0].id;
+        console.log(`✅ Using existing project: ${projectName} (${finalProjectId})`);
+      } else {
+        // Create new project
+        finalProjectId = uuidv4();
+        
+        await pool.execute(
+          'INSERT INTO projects (id, name, owner_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
+          [finalProjectId, projectName, defaultUserId]
+        );
+        
+        console.log(`✅ Created new project: ${projectName} (${finalProjectId})`);
+      }
+    } else if (!finalProjectId) {
+      // Use default project if no projectName provided
+      finalProjectId = 'default-project';
+      
+      // Ensure default project exists
+      try {
+        const [existingProjects] = await pool.execute(
+          'SELECT id FROM projects WHERE id = ?',
+          [finalProjectId]
+        );
+        
+        if ((existingProjects as any[]).length === 0) {
+          await pool.execute(
+            'INSERT INTO projects (id, name, owner_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
+            [finalProjectId, 'Default Project', defaultUserId]
+          );
+          console.log(`✅ Created default project`);
+        }
+      } catch (err) {
+        console.log('Note: Could not create default project (may already exist)');
+      }
     }
 
     const connection = await databaseConnectionService.createConnection({

@@ -23,6 +23,7 @@ export const DatabaseConnections: React.FC = () => {
   const [testingId, setTestingId] = useState<string | null>(null);
   const [form, setForm] = useState<{
     name: string;
+    projectName: string;
     type: 'sqlserver' | 'postgresql' | 'mysql';
     host: string;
     port: number;
@@ -33,6 +34,7 @@ export const DatabaseConnections: React.FC = () => {
     timeout: number;
   }>({
     name: '',
+    projectName: 'Default Project',
     type: 'sqlserver',
     host: '',
     port: 3306,
@@ -86,6 +88,7 @@ export const DatabaseConnections: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: form.name,
+          projectName: form.projectName,
           type: form.type,
           host: form.host,
           port: form.port,
@@ -123,7 +126,7 @@ export const DatabaseConnections: React.FC = () => {
         }
         setShowForm(false);
         setEditingId(null);
-        setForm({ name: '', type: 'mysql', host: '', port: 3306, database: '', username: '', password: '', ssl: false, timeout: 30 });
+        setForm({ name: '', projectName: 'Default Project', type: 'mysql', host: '', port: 3306, database: '', username: '', password: '', ssl: false, timeout: 30 });
       } else {
         throw new Error(data.error?.message || 'Failed to save connection');
       }
@@ -136,6 +139,7 @@ export const DatabaseConnections: React.FC = () => {
   const handleEdit = (conn: typeof connections[0]) => {
     setForm({
       name: conn.name,
+      projectName: 'Default Project', // Default for existing connections
       type: conn.type,
       host: conn.host,
       port: conn.port,
@@ -169,7 +173,7 @@ export const DatabaseConnections: React.FC = () => {
             Reset to Demo
           </button>
           <button
-            onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', type: 'mysql', host: '', port: 3306, database: '', username: '', password: '', ssl: false, timeout: 30 }); }}
+            onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', projectName: 'Default Project', type: 'mysql', host: '', port: 3306, database: '', username: '', password: '', ssl: false, timeout: 30 }); }}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
           >
             <Plus className="w-4 h-4" />
@@ -209,6 +213,17 @@ export const DatabaseConnections: React.FC = () => {
                   placeholder="e.g., Production SQL Server"
                   className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">Project Name *</label>
+                <input
+                  type="text"
+                  value={form.projectName}
+                  onChange={(e) => setForm({ ...form, projectName: e.target.value })}
+                  placeholder="e.g., Default Project"
+                  className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Organize connections by project. A new project will be created if it doesn't exist.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">Database Type</label>
