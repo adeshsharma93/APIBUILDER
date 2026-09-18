@@ -35,34 +35,71 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { project_id, name, type, host, port, database_name, username, password, ssl_enabled, connection_timeout } = req.body;
+    // Accept both field name formats for flexibility
+    const { 
+      project_id, 
+      name, 
+      type, 
+      host, 
+      port, 
+      database_name,
+      database,  // Alternative field name
+      username, 
+      password, 
+      ssl_enabled,
+      ssl,  // Alternative field name
+      connection_timeout,
+      timeout  // Alternative field name
+    } = req.body;
 
-    if (!project_id || !name || !host || !database_name || !username || !password) {
+    // Use default project_id if not provided
+    const finalProjectId = project_id || 'default-project';
+    const finalDatabaseName = database_name || database;
+    const finalSsl = ssl_enabled !== undefined ? ssl_enabled : (ssl !== undefined ? ssl : true);
+    const finalTimeout = connection_timeout || timeout || 30;
+
+    if (!name || !host || !finalDatabaseName || !username || !password) {
       return res.status(400).json({
         success: false,
-        error: { code: 'INVALID_PARAMETER', message: 'Missing required fields' },
+        error: { code: 'INVALID_PARAMETER', message: 'Missing required fields: name, host, database, username, password' },
       });
     }
 
+    // Ensure default project exists
+    try {
+      const { getAppDbPool } = await import('../config/database');
+      const pool = await getAppDbPool();
+      await pool.request()
+        .input('project_id', finalProjectId)
+        .input('name', 'Default Project')
+        .input('owner_id', 'default-user')
+        .query(`
+          IF NOT EXISTS (SELECT 1 FROM projects WHERE id = @project_id)
+          INSERT INTO projects (id, name, owner_id) VALUES (@project_id, @name, @owner_id)
+        `);
+    } catch (err) {
+      console.log('Note: Could not create default project (may already exist)');
+    }
+
     const connection = await databaseConnectionService.createConnection({
-      project_id,
+      project_id: finalProjectId,
       name,
-      type: type || 'sqlserver',
+      type: type || 'mysql',
       host,
-      port: port || 1433,
-      database_name,
+      port: port || (type === 'mysql' ? 3306 : 1433),
+      database_name: finalDatabaseName,
       username,
       password,
-      ssl_enabled: ssl_enabled !== false,
-      connection_timeout: connection_timeout || 30,
+      ssl_enabled: finalSsl,
+      connection_timeout: finalTimeout,
     });
 
-    res.status(201).json({ success: true, data: connection });
+    res.status(201).json({ success: true, connection });
   } catch (error: any) {
     console.error('Create connection error:', error);
     res.status(500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to create connection' },
+      error: { code: 'INTERNAL_ERROR', message: error.message || 'Failed to create connection' },
     });
   }
 });
@@ -96,7 +133,10 @@ router.get('/:id', async (req: Request, res: Response) => {
  */
 router.post('/:id/test', async (req: Request, res: Response) => {
   try {
-    const result = await databaseConnectionService.testConnection(req.params.id);
+    const { dbType } = req.query;
+    const type = (dbType as string) || 'mysql';
+    
+    const result = await databaseConnectionService.testConnection(req.params.id, type as 'mysql' | 'sqlserver');
     if (!result.success) {
       return res.status(400).json({
         success: false,

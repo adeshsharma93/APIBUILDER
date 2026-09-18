@@ -33,9 +33,11 @@ const userMysqlPools: Map<string, mysql.Pool> = new Map();
 
 export async function getUserMysqlPool(connectionId: string): Promise<mysql.Pool> {
   if (userMysqlPools.has(connectionId)) {
+    console.log(`✅ Using cached MySQL pool for connection: ${connectionId}`);
     return userMysqlPools.get(connectionId)!;
   }
 
+  console.log(`🔍 Fetching connection details for: ${connectionId}`);
   const pool = await getMysqlPool();
   const [rows] = await pool.execute(
     'SELECT * FROM database_connections WHERE id = ?',
@@ -44,31 +46,51 @@ export async function getUserMysqlPool(connectionId: string): Promise<mysql.Pool
 
   const result = rows as any[];
   if (result.length === 0) {
-    throw new Error('Database connection not found');
+    console.error(`❌ Connection not found in database: ${connectionId}`);
+    throw new Error(`Database connection not found with ID: ${connectionId}`);
   }
 
   const conn = result[0];
+  console.log(`✅ Found connection: ${conn.name} (${conn.host}:${conn.port}/${conn.database_name})`);
   
   // Decrypt credentials
-  const { decryptCredential } = await import('../utils/encryption');
-  const password = await decryptCredential(conn.encrypted_password);
+  try {
+    const { decryptCredential } = await import('../utils/encryption');
+    const password = await decryptCredential(conn.encrypted_password);
+    console.log(`✅ Decrypted credentials for: ${conn.name}`);
 
-  const userPool = mysql.createPool({
-    host: conn.host,
-    port: conn.port,
-    user: conn.username,
-    password: password,
-    database: conn.database_name,
-    waitForConnections: true,
-    connectionLimit: 5,
-    queueLimit: 0,
-    ssl: conn.ssl_enabled ? {} : undefined,
-  });
+    const userPool = mysql.createPool({
+      host: conn.host,
+      port: conn.port,
+      user: conn.username,
+      password: password,
+      database: conn.database_name,
+      waitForConnections: true,
+      connectionLimit: 5,
+      queueLimit: 0,
+      ssl: conn.ssl_enabled ? {} : undefined,
+      connectTimeout: 10000,
+    });
 
-  userMysqlPools.set(connectionId, userPool);
-  console.log(`✅ User MySQL database connected: ${conn.name}`);
-  
-  return userPool;
+    // Test the connection
+    try {
+      const testConn = await userPool.getConnection();
+      await testConn.ping();
+      testConn.release();
+      console.log(`✅ Successfully connected to user database: ${conn.name}`);
+    } catch (testError: any) {
+      console.error(`❌ Failed to connect to user database: ${conn.name}`, testError.message);
+      throw new Error(`Failed to connect to database: ${testError.message}`);
+    }
+
+    userMysqlPools.set(connectionId, userPool);
+    console.log(`✅ User MySQL database pool created and cached: ${conn.name}`);
+    
+    return userPool;
+  } catch (decryptError: any) {
+    console.error(`❌ Failed to decrypt credentials for: ${conn.name}`, decryptError.message);
+    throw new Error(`Failed to decrypt database credentials: ${decryptError.message}`);
+  }
 }
 
 export async function testMysqlConnection(config: {

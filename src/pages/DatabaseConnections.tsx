@@ -45,33 +45,92 @@ export const DatabaseConnections: React.FC = () => {
 
   const handleTestConnection = async (id: string) => {
     setTestingId(id);
-    await new Promise((r) => setTimeout(r, 1500));
-    updateConnection(id, { status: 'connected', lastTested: new Date().toISOString() });
-    addToast('success', 'Connection test successful!');
-    setTestingId(null);
+    try {
+      // Get connection to determine type
+      const connection = connections.find(c => c.id === id);
+      const dbType = connection?.type || 'mysql';
+      
+      // Test connection via backend API
+      const response = await fetch(`http://localhost:3001/api/connections/${id}/test?dbType=${dbType}`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        updateConnection(id, { status: 'connected', lastTested: new Date().toISOString() });
+        addToast('success', 'Connection test successful!');
+      } else {
+        updateConnection(id, { status: 'error', lastTested: new Date().toISOString() });
+        addToast('error', data.error?.message || 'Connection test failed');
+      }
+    } catch (error: any) {
+      console.error('Error testing connection:', error);
+      updateConnection(id, { status: 'error', lastTested: new Date().toISOString() });
+      addToast('error', error.message || 'Failed to test connection');
+    } finally {
+      setTestingId(null);
+    }
   };
 
-  const handleSave = () => {
-    if (!form.name || !form.host || !form.database || !form.username) {
+  const handleSave = async () => {
+    if (!form.name || !form.host || !form.database || !form.username || !form.password) {
       addToast('error', 'Please fill in all required fields');
       return;
     }
-    if (editingId) {
-      updateConnection(editingId, { ...form });
-      addToast('success', 'Connection updated successfully');
-    } else {
-      addConnection({
-        id: `conn-${Date.now()}`,
-        ...form,
-        status: 'disconnected',
-        createdAt: new Date().toISOString(),
-        lastTested: null,
+
+    try {
+      // Save connection to backend
+      const response = await fetch('http://localhost:3001/api/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name,
+          type: form.type,
+          host: form.host,
+          port: form.port,
+          database: form.database,
+          username: form.username,
+          password: form.password,
+          ssl: form.ssl,
+          timeout: form.timeout,
+        }),
       });
-      addToast('success', 'Connection created successfully');
+
+      const data = await response.json();
+
+      if (data.success && data.connection) {
+        // Update local store with the backend connection
+        if (editingId) {
+          updateConnection(editingId, { ...form });
+          addToast('success', 'Connection updated successfully');
+        } else {
+          addConnection({
+            id: data.connection.id,
+            name: form.name,
+            type: form.type,
+            host: form.host,
+            port: form.port,
+            database: form.database,
+            username: form.username,
+            ssl: form.ssl,
+            timeout: form.timeout,
+            status: 'disconnected',
+            createdAt: new Date().toISOString(),
+            lastTested: null,
+          });
+          addToast('success', 'Connection created and saved to database');
+        }
+        setShowForm(false);
+        setEditingId(null);
+        setForm({ name: '', type: 'mysql', host: '', port: 3306, database: '', username: '', password: '', ssl: false, timeout: 30 });
+      } else {
+        throw new Error(data.error?.message || 'Failed to save connection');
+      }
+    } catch (error: any) {
+      console.error('Error saving connection:', error);
+      addToast('error', error.message || 'Failed to save connection to database');
     }
-    setShowForm(false);
-    setEditingId(null);
-    setForm({ name: '', type: 'mysql', host: '', port: 3306, database: '', username: '', password: '', ssl: false, timeout: 30 });
   };
 
   const handleEdit = (conn: typeof connections[0]) => {
