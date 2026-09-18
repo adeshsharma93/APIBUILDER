@@ -44,27 +44,56 @@ export const ApiDetail: React.FC = () => {
   const apiLogs = requestLogs.filter((l) => l.apiId === api.id);
 
   const handleTestApi = async () => {
+    // Validate required parameters
+    const missingParams = api.parameters.filter(p => p.required && !testParams[p.name]);
+    if (missingParams.length > 0) {
+      addToast('error', `Missing required parameters: ${missingParams.map(p => p.name).join(', ')}`);
+      return;
+    }
+
     setIsTesting(true);
-    await new Promise((r) => setTimeout(r, 1500));
+    setTestResult(null);
+    
+    // Simulate API call with realistic delay
+    await new Promise((r) => setTimeout(r, 800 + Math.random() * 700));
+    
+    const responseTime = Math.floor(50 + Math.random() * 150);
+    
+    // Generate response based on API parameters
+    const mockData = api.parameters.length > 0 
+      ? [
+          { id: 1, name: 'Sample Record 1', ...testParams, created_at: new Date().toISOString() },
+          { id: 2, name: 'Sample Record 2', ...testParams, created_at: new Date().toISOString() },
+          { id: 3, name: 'Sample Record 3', ...testParams, created_at: new Date().toISOString() },
+        ]
+      : [
+          { id: 1, name: 'Record 1', created_at: new Date().toISOString() },
+          { id: 2, name: 'Record 2', created_at: new Date().toISOString() },
+          { id: 3, name: 'Record 3', created_at: new Date().toISOString() },
+        ];
+
     setTestResult({
       status: 200,
-      time: Math.floor(Math.random() * 80) + 20,
+      time: responseTime,
       data: {
         success: true,
-        data: [
-          { CustomerId: 1, CustomerName: 'Rajesh Kumar', Email: 'rajesh@example.com', Phone: '+91-9876543210', City: 'Mumbai', CreatedAt: '2024-01-15T10:30:00Z' },
-          { CustomerId: 2, CustomerName: 'Priya Sharma', Email: 'priya@example.com', Phone: '+91-9876543211', City: 'Delhi', CreatedAt: '2024-01-20T14:15:00Z' },
-          { CustomerId: 3, CustomerName: 'Amit Patel', Email: 'amit@example.com', Phone: '+91-9876543212', City: 'Ahmedabad', CreatedAt: '2024-02-01T09:00:00Z' },
-        ],
-        pagination: {
+        data: mockData,
+        pagination: api.pagination ? {
           page: 1,
-          pageSize: 50,
+          pageSize: api.pageSize,
           total: 156,
-          totalPages: 4,
-        },
+          totalPages: Math.ceil(156 / api.pageSize),
+        } : undefined,
+        metadata: {
+          executionTime: responseTime,
+          rowCount: mockData.length,
+          cached: false,
+          apiVersion: api.version,
+        }
       },
     });
     setIsTesting(false);
+    addToast('success', `Test successful - ${responseTime}ms response time`);
   };
 
   const handleCopy = (text: string, label: string) => {
@@ -304,6 +333,20 @@ export const ApiDetail: React.FC = () => {
                   <code className="text-sm font-mono text-white">{api.endpoint}</code>
                 </div>
               </div>
+
+              {/* Request URL Preview */}
+              {Object.keys(testParams).length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Request URL</label>
+                  <div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs font-mono text-blue-300 break-all">
+                    https://api.sqlapi.dev{api.endpoint}
+                    {Object.entries(testParams).filter(([_, v]) => v).length > 0 && (
+                      <>?{Object.entries(testParams).filter(([_, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')}</>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {api.parameters.map((param) => (
                 <div key={param.name}>
                   <label className="block text-xs font-medium text-gray-400 mb-1.5">
@@ -318,8 +361,35 @@ export const ApiDetail: React.FC = () => {
                     placeholder={param.defaultValue || `Enter ${param.name}...`}
                     className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
+                  {param.description && (
+                    <p className="text-xs text-gray-500 mt-1">{param.description}</p>
+                  )}
                 </div>
               ))}
+
+              {api.pagination && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Page</label>
+                    <input
+                      type="number"
+                      value={testParams['page'] || '1'}
+                      onChange={(e) => setTestParams({ ...testParams, page: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Page Size</label>
+                    <input
+                      type="number"
+                      value={testParams['pageSize'] || api.pageSize.toString()}
+                      onChange={(e) => setTestParams({ ...testParams, pageSize: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1.5">API Key</label>
                 <input
@@ -338,7 +408,7 @@ export const ApiDetail: React.FC = () => {
                 ) : (
                   <Send className="w-4 h-4" />
                 )}
-                Send Request
+                {isTesting ? 'Sending Request...' : 'Send Request'}
               </button>
             </div>
           </div>

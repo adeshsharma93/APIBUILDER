@@ -15,9 +15,10 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { mockQueryResults, mockConnections } from '../data/mockData';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 export const SqlEditor: React.FC = () => {
+  const navigate = useNavigate();
   const { queries, addQuery, addToast } = useStore();
   const [sql, setSql] = useState(`SELECT
     CustomerId,
@@ -192,21 +193,25 @@ ORDER BY CreatedAt DESC;`);
               placeholder="Query name..."
               className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-            <button
-              onClick={handleSave}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
-            >
-              <Save className="w-3.5 h-3.5" />
-              Save Query
-            </button>
-            <Link
-              to="/apis/new"
-              className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium transition-colors"
-            >
-              <Globe className="w-3.5 h-3.5" />
-              Create API
-            </Link>
-          </div>
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
+              >
+                <Save className="w-3.5 h-3.5" />
+                Save Query
+              </button>
+              <button
+                onClick={() => {
+                  // Save current SQL to localStorage for API Builder to pick up
+                  localStorage.setItem('sql-api-builder-new-api-sql', sql);
+                  localStorage.setItem('sql-api-builder-new-api-name', queryName || '');
+                  navigate('/apis/new');
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium transition-colors"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                Create API
+              </button>          </div>
 
           {/* Results */}
           {showResults && (

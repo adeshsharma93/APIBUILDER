@@ -17,15 +17,41 @@ import { QueryParameter } from '../types';
 
 export const ApiBuilder: React.FC = () => {
   const navigate = useNavigate();
-  const { addApi, addToast } = useStore();
+  const { addApi, addToast, apis } = useStore();
   const [step, setStep] = useState(1);
+  const [testResult, setTestResult] = useState<any>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testParams, setTestParams] = useState<Record<string, string>>({});
+
+  // Check if SQL was passed from SQL Editor
+  const initialSql = localStorage.getItem('sql-api-builder-new-api-sql') || `SELECT
+    CustomerId,
+    CustomerName,
+    Email,
+    Phone,
+    City,
+    CreatedAt
+FROM dbo.Customers
+WHERE Country = @country
+  AND IsActive = 1
+ORDER BY CreatedAt DESC
+OFFSET @offset ROWS
+FETCH NEXT @pageSize ROWS ONLY;`;
+
+  const initialName = localStorage.getItem('sql-api-builder-new-api-name') || '';
+
+  // Clear the stored SQL after reading it
+  React.useEffect(() => {
+    localStorage.removeItem('sql-api-builder-new-api-sql');
+    localStorage.removeItem('sql-api-builder-new-api-name');
+  }, []);
 
   const [form, setForm] = useState({
-    name: '',
+    name: initialName,
     endpoint: '',
     method: 'GET' as 'GET' | 'POST' | 'PUT' | 'DELETE',
     description: '',
-    sql: `SELECT\n    CustomerId,\n    CustomerName,\n    Email,\n    Phone,\n    City,\n    CreatedAt\nFROM dbo.Customers\nWHERE Country = @country\n  AND IsActive = 1\nORDER BY CreatedAt DESC\nOFFSET @offset ROWS\nFETCH NEXT @pageSize ROWS ONLY;`,
+    sql: initialSql,
     connectionId: mockConnections[0].id,
     authRequired: true,
     rateLimit: 100,
@@ -66,16 +92,104 @@ export const ApiBuilder: React.FC = () => {
     });
   }, [form.sql]);
 
+  // Auto-generate endpoint from name
+  const generateEndpoint = (name: string) => {
+    if (!name) return '';
+    return '/api/v1/' + name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+/g, '-')
+      .substring(0, 50);
+  };
+
+  // Validate endpoint is unique
+  const isEndpointUnique = (endpoint: string, currentApiId?: string) => {
+    return !apis.some(api => 
+      api.endpoint === endpoint && 
+      api.version === form.version &&
+      api.id !== currentApiId
+    );
+  };
+
+  // Test API functionality
+  const handleTestApi = async () => {
+    // Validate required parameters
+    const missingParams = parameters.filter(p => p.required && !testParams[p.name]);
+    if (missingParams.length > 0) {
+      addToast('error', `Missing required parameters: ${missingParams.map(p => p.name).join(', ')}`);
+      return;
+    }
+
+    setIsTesting(true);
+    setTestResult(null);
+
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 700));
+
+    // Generate mock response based on SQL
+    const mockData = [
+      { id: 1, name: 'Sample Record 1', created_at: new Date().toISOString() },
+      { id: 2, name: 'Sample Record 2', created_at: new Date().toISOString() },
+      { id: 3, name: 'Sample Record 3', created_at: new Date().toISOString() },
+    ];
+
+    const responseTime = Math.floor(50 + Math.random() * 150);
+
+    setTestResult({
+      status: 200,
+      time: responseTime,
+      data: {
+        success: true,
+        data: mockData,
+        pagination: form.pagination ? {
+          page: 1,
+          pageSize: form.pageSize,
+          total: 156,
+          totalPages: Math.ceil(156 / form.pageSize),
+        } : undefined,
+        metadata: {
+          executionTime: responseTime,
+          rowCount: mockData.length,
+          cached: false,
+        }
+      }
+    });
+
+    setIsTesting(false);
+    addToast('success', `API test successful - ${responseTime}ms response time`);
+  };
+
   const handleSave = (publish: boolean = false) => {
-    if (!form.name || !form.endpoint || !form.sql) {
+    if (!form.name || !form.sql) {
       addToast('error', 'Please fill in all required fields');
+      return;
+    }
+
+    // Auto-generate endpoint if not provided
+    let endpoint = form.endpoint;
+    if (!endpoint) {
+      endpoint = generateEndpoint(form.name);
+      if (!endpoint) {
+        addToast('error', 'Please provide an API name or endpoint');
+        return;
+      }
+    }
+
+    // Ensure endpoint starts with /
+    if (!endpoint.startsWith('/')) {
+      endpoint = '/' + endpoint;
+    }
+
+    // Check for duplicate endpoints
+    if (!isEndpointUnique(endpoint)) {
+      addToast('error', `An API with endpoint "${endpoint}" already exists for version ${form.version}`);
       return;
     }
 
     addApi({
       id: `api-${Date.now()}`,
       name: form.name,
-      endpoint: form.endpoint,
+      endpoint: endpoint,
       method: form.method,
       description: form.description,
       sql: form.sql,
