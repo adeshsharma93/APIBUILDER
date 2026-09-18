@@ -43,18 +43,25 @@ router.post('/test', async (req, res) => {
     // Get connection name for display
     const connection = await databaseConnectionService.getConnection(connectionId, dbType || 'mysql');
 
-    res.json({
+    const responseData: any = {
       success: result.success,
-       result.success ? {
-        columns: result.data && result.data.length > 0 ? Object.keys(result.data[0]) : [],
-        rows: result.data || [],
+      error: result.error,
+    };
+
+    if (result.success && result.data) {
+      responseData.data = {
+        columns: result.data.length > 0 ? Object.keys(result.data[0]) : [],
+        rows: result.data,
         rowCount: result.rowCount || 0,
+        rowsAffected: result.rowsAffected,
         executionTime: result.executionTime || 0,
         connectionName: connection?.name || 'Unknown',
         pagination: result.pagination,
-      } : undefined,
-      error: result.error,
-    });
+        message: result.message,
+      };
+    }
+
+    res.json(responseData);
   } catch (error: any) {
     console.error('Error testing query:', error);
     res.status(500).json({

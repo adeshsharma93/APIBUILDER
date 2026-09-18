@@ -44,19 +44,30 @@ export class SchemaService {
    * Fetch tables from MySQL database
    */
   private async getMysqlTables(connectionId: string): Promise<TableInfo[]> {
-    const pool = await getUserMysqlPool(connectionId);
+    console.log(`🔍 Fetching MySQL tables for connection: ${connectionId}`);
+    
+    let pool;
+    try {
+      pool = await getUserMysqlPool(connectionId);
+      console.log(`✅ Got MySQL pool for connection: ${connectionId}`);
+    } catch (error: any) {
+      console.error(`❌ Failed to get MySQL pool:`, error.message);
+      throw error;
+    }
     
     // Get all tables
-    const [tables] = await pool.execute(`
-      SELECT 
-        TABLE_NAME as name,
-        TABLE_SCHEMA as schema,
-        TABLE_ROWS as rowCount
-      FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_TYPE = 'BASE TABLE'
-      ORDER BY TABLE_NAME
-    `);
+    try {
+      const [tables] = await pool.execute(`
+        SELECT 
+          TABLE_NAME as name,
+          TABLE_SCHEMA as schema,
+          TABLE_ROWS as rowCount
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_TYPE = 'BASE TABLE'
+        ORDER BY TABLE_NAME
+      `);
+      console.log(`✅ Found ${(tables as any[]).length} tables`);
 
     const tableList = tables as any[];
     const tablesWithDetails: TableInfo[] = [];
@@ -151,6 +162,10 @@ export class SchemaService {
     }
 
     return tablesWithDetails;
+    } catch (error: any) {
+      console.error('❌ Error fetching MySQL tables:', error.message);
+      throw new Error(`Failed to fetch tables: ${error.message}`);
+    }
   }
 
   /**
