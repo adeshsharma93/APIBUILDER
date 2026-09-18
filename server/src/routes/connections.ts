@@ -67,11 +67,32 @@ router.post('/', async (req: Request, res: Response) => {
     // Get or create project
     let finalProjectId = project_id;
     
+    // First, ensure default system user exists
+    const { getMysqlPool } = await import('../config/mysqlDatabase');
+    const pool = await getMysqlPool();
+    const { v4: uuidv4 } = await import('uuid');
+    const { hashPassword } = await import('../utils/encryption');
+    
+    const defaultUserId = '00000000-0000-0000-0000-000000000000';
+    
+    // Check if default user exists
+    const [existingUsers] = await pool.execute(
+      'SELECT id FROM users WHERE id = ?',
+      [defaultUserId]
+    );
+    
+    if ((existingUsers as any[]).length === 0) {
+      // Create default system user
+      const defaultPasswordHash = await hashPassword('system-default-password');
+      await pool.execute(
+        'INSERT INTO users (id, email, password_hash, name, role, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())',
+        [defaultUserId, 'system@sqlapi.dev', defaultPasswordHash, 'System User', 'admin', true]
+      );
+      console.log(`✅ Created default system user: ${defaultUserId}`);
+    }
+    
     if (!finalProjectId && projectName) {
       // Try to find existing project by name
-      const { getMysqlPool } = await import('../config/mysqlDatabase');
-      const pool = await getMysqlPool();
-      
       const [existingProjects] = await pool.execute(
         'SELECT id FROM projects WHERE name = ?',
         [projectName]
@@ -83,12 +104,11 @@ router.post('/', async (req: Request, res: Response) => {
         console.log(`✅ Using existing project: ${projectName} (${finalProjectId})`);
       } else {
         // Create new project
-        const { v4: uuidv4 } = await import('uuid');
         finalProjectId = uuidv4();
         
         await pool.execute(
           'INSERT INTO projects (id, name, owner_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
-          [finalProjectId, projectName, 'default-user']
+          [finalProjectId, projectName, defaultUserId]
         );
         
         console.log(`✅ Created new project: ${projectName} (${finalProjectId})`);
@@ -99,9 +119,6 @@ router.post('/', async (req: Request, res: Response) => {
       
       // Ensure default project exists
       try {
-        const { getMysqlPool } = await import('../config/mysqlDatabase');
-        const pool = await getMysqlPool();
-        
         const [existingProjects] = await pool.execute(
           'SELECT id FROM projects WHERE id = ?',
           [finalProjectId]
@@ -110,7 +127,7 @@ router.post('/', async (req: Request, res: Response) => {
         if ((existingProjects as any[]).length === 0) {
           await pool.execute(
             'INSERT INTO projects (id, name, owner_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
-            [finalProjectId, 'Default Project', 'default-user']
+            [finalProjectId, 'Default Project', defaultUserId]
           );
           console.log(`✅ Created default project`);
         }
