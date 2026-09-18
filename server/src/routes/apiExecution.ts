@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { apiExecutionService } from '../services/apiExecutionService';
+import { apiKeyService } from '../services/apiKeyService';
 import { getAppDbPool } from '../config/database';
 import { authenticateApiKey, rateLimit, checkApiAccess } from '../middleware/auth';
 
@@ -15,7 +16,6 @@ router.get('/execute/:apiId', authenticateApiKey, async (req: Request, res: Resp
 
   try {
     // Check API access
-    const hasAccess = await apiExecutionService['apiKeyService']?.hasAccessToApi(req.apiKey.id, apiId);
     if (req.apiKey.allowed_apis.length > 0 && !req.apiKey.allowed_apis.includes(apiId)) {
       return res.status(403).json({
         success: false,
