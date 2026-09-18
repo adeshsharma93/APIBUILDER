@@ -16,7 +16,6 @@ import {
   TestTube,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { mockQueryResults } from '../data/mockData';
 import { QueryParameter } from '../types';
 
 export const ApiBuilder: React.FC = () => {
@@ -250,22 +249,46 @@ FETCH NEXT @pageSize ROWS ONLY;`;
     setIsQueryRunning(true);
     setQueryResult(null);
 
-    // Simulate query execution
-    await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 700));
+    try {
+      // Get the selected connection to determine database type
+      const selectedConnection = connections.find((c: any) => c.id === form.connectionId);
+      const dbType = selectedConnection?.type || 'mysql';
 
-    const executionTime = Math.floor(30 + Math.random() * 120);
+      // Call backend API to execute the query
+      const response = await fetch('http://localhost:3001/api/query/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          connectionId: form.connectionId,
+          sql: form.sql,
+          parameters: {},
+          dbType: dbType,
+        }),
+      });
 
-    // Use mock results for demo
-    setQueryResult({
-      columns: mockQueryResults.columns,
-      rows: mockQueryResults.rows.slice(0, 5), // Show first 5 rows
-      rowCount: mockQueryResults.rowCount,
-      executionTime: executionTime,
-      connectionName: connections.find((c: any) => c.id === form.connectionId)?.name || 'Unknown',
-    });
+      const data = await response.json();
 
-    setIsQueryRunning(false);
-    addToast('success', `Query executed successfully - ${executionTime}ms, ${mockQueryResults.rowCount} rows`);
+      if (data.success && data.data) {
+        setQueryResult({
+          columns: data.data.columns,
+          rows: data.data.rows.slice(0, 5), // Show first 5 rows
+          rowCount: data.data.rowCount,
+          executionTime: data.data.executionTime,
+          connectionName: data.data.connectionName,
+        });
+
+        addToast('success', `Query executed successfully - ${data.data.executionTime}ms, ${data.data.rowCount} rows`);
+      } else {
+        throw new Error(data.error?.message || 'Query execution failed');
+      }
+    } catch (error: any) {
+      console.error('Error testing query:', error);
+      addToast('error', error.message || 'Failed to execute query');
+    } finally {
+      setIsQueryRunning(false);
+    }
   };
 
   return (
