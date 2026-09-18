@@ -1,11 +1,18 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { useStore } from '../store/useStore';
-import { Moon, Sun, Bell, Search, User } from 'lucide-react';
+import { Moon, Sun, Bell, Search, User, LogOut } from 'lucide-react';
 
 export const Layout: React.FC = () => {
-  const { darkMode, toggleDarkMode, sidebarCollapsed } = useStore();
+  const navigate = useNavigate();
+  const { darkMode, toggleDarkMode, sidebarCollapsed, currentUser, logout, addToast } = useStore();
+
+  const handleLogout = () => {
+    logout();
+    addToast('success', 'Logged out successfully');
+    navigate('/login');
+  };
 
   return (
     <div className={`min-h-screen ${darkMode ? 'dark bg-gray-950 text-white' : 'bg-gray-50 text-gray-900'}`}>
@@ -40,9 +47,16 @@ export const Layout: React.FC = () => {
                   <User className="w-4 h-4 text-white" />
                 </div>
                 <div className="hidden md:block">
-                  <p className="text-sm font-medium text-white">Admin User</p>
-                  <p className="text-xs text-gray-500">admin@sqlapi.dev</p>
+                  <p className="text-sm font-medium text-white">{currentUser?.name || 'User'}</p>
+                  <p className="text-xs text-gray-500">{currentUser?.email || 'user@example.com'}</p>
                 </div>
+                <button
+                  onClick={handleLogout}
+                  className="ml-2 p-2 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors"
+                  title="Logout"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
               </div>
             </div>
           </div>

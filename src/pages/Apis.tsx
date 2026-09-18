@@ -13,14 +13,19 @@ import {
   AlertCircle,
   Clock,
   Activity,
+  Edit,
+  Trash2,
+  ToggleLeft,
+  ToggleRight,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 export const Apis: React.FC = () => {
-  const { apis } = useStore();
+  const { apis, updateApi, removeApi, addToast } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [actionMenuId, setActionMenuId] = useState<string | null>(null);
 
   const filteredApis = apis.filter((api) => {
     const matchesSearch = api.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -33,6 +38,21 @@ export const Apis: React.FC = () => {
     navigator.clipboard.writeText(`https://api.sqlapi.dev${endpoint}`);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleToggleStatus = (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'published' ? 'disabled' : 'published';
+    updateApi(id, { status: newStatus as any });
+    addToast('success', `API ${newStatus === 'published' ? 'published' : 'disabled'} successfully`);
+    setActionMenuId(null);
+  };
+
+  const handleDelete = (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
+      removeApi(id);
+      addToast('success', 'API deleted successfully');
+      setActionMenuId(null);
+    }
   };
 
   const statusColors: Record<string, string> = {
@@ -148,6 +168,51 @@ export const Apis: React.FC = () => {
                   <ExternalLink className="w-3 h-3" />
                   Details
                 </Link>
+                <div className="relative">
+                  <button
+                    onClick={() => setActionMenuId(actionMenuId === api.id ? null : api.id)}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+                  {actionMenuId === api.id && (
+                    <div className="absolute right-0 top-full mt-1 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10">
+                      <button
+                        onClick={() => {
+                          addToast('info', 'Edit functionality coming soon');
+                          setActionMenuId(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+                      >
+                        <Edit className="w-3 h-3" />
+                        Edit API
+                      </button>
+                      <button
+                        onClick={() => handleToggleStatus(api.id, api.status)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 transition-colors"
+                      >
+                        {api.status === 'published' ? (
+                          <>
+                            <ToggleLeft className="w-3 h-3" />
+                            Disable API
+                          </>
+                        ) : (
+                          <>
+                            <ToggleRight className="w-3 h-3" />
+                            Publish API
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(api.id, api.name)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-gray-700 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Delete API
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

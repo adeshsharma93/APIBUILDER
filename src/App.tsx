@@ -1,5 +1,5 @@
 import React from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { DatabaseConnections } from './pages/DatabaseConnections';
@@ -12,12 +12,29 @@ import { ApiKeys } from './pages/ApiKeys';
 import { Logs } from './pages/Logs';
 import { Documentation } from './pages/Documentation';
 import { SettingsPage } from './pages/Settings';
+import { Login } from './pages/Login';
+import { useStore } from './store/useStore';
+
+// Protected Route Component
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useStore();
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  return <>{children}</>;
+};
 
 function App() {
   return (
     <HashRouter>
       <Routes>
-        <Route element={<Layout />}>
+        {/* Public Routes */}
+        <Route path="/login" element={<Login />} />
+        
+        {/* Protected Routes */}
+        <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/connections" element={<DatabaseConnections />} />
           <Route path="/explorer" element={<DatabaseExplorer />} />
@@ -30,6 +47,9 @@ function App() {
           <Route path="/documentation" element={<Documentation />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
+        
+        {/* Default redirect */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>
   );

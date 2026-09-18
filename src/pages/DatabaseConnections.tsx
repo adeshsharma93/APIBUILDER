@@ -97,13 +97,26 @@ export const DatabaseConnections: React.FC = () => {
           <h1 className="text-2xl font-bold text-white">Database Connections</h1>
           <p className="text-gray-400 mt-1">Manage your database connections securely</p>
         </div>
-        <button
-          onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', type: 'mysql', host: '', port: 3306, database: '', username: '', password: '', ssl: false, timeout: 30 }); }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
-        >
-          <Plus className="w-4 h-4" />
-          New Connection
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              // Reset to demo data
+              localStorage.removeItem('sql-api-builder-storage');
+              window.location.reload();
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors text-sm font-medium"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Reset to Demo
+          </button>
+          <button
+            onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', type: 'mysql', host: '', port: 3306, database: '', username: '', password: '', ssl: false, timeout: 30 }); }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            New Connection
+          </button>
+        </div>
       </div>
 
       {/* Security Notice */}

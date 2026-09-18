@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Database,
   Globe,
@@ -27,8 +27,19 @@ import {
 import { useStore } from '../store/useStore';
 import { chartData } from '../data/mockData';
 import { Link } from 'react-router-dom';
+import { SetupWizard } from '../components/SetupWizard';
 
 export const Dashboard: React.FC = () => {
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
+
+  useEffect(() => {
+    // Show setup wizard on first visit
+    const hasVisited = localStorage.getItem('sql-api-builder-has-visited');
+    if (!hasVisited) {
+      setShowSetupWizard(true);
+      localStorage.setItem('sql-api-builder-has-visited', 'true');
+    }
+  }, []);
   const { connections, apis, requestLogs } = useStore();
 
   const connectedCount = connections.filter((c) => c.status === 'connected').length;
@@ -86,12 +97,14 @@ export const Dashboard: React.FC = () => {
   const recentLogs = requestLogs.slice(0, 6);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-        <p className="text-gray-400 mt-1">Overview of your SQL API Builder platform</p>
-      </div>
+    <>
+      {showSetupWizard && <SetupWizard />}
+      <div className="space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+          <p className="text-gray-400 mt-1">Overview of your SQL API Builder platform</p>
+        </div>
 
       {/* Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -290,5 +303,6 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };

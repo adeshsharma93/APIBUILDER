@@ -2,6 +2,20 @@ import { DatabaseConnection, TableSchema, SqlQuery, ApiDefinition, ApiKey, ApiRe
 
 export const mockConnections: DatabaseConnection[] = [
   {
+    id: 'conn-demo',
+    name: '🎯 Demo Database (Sample Data)',
+    type: 'mysql',
+    host: 'localhost',
+    port: 3306,
+    database: 'demo_database',
+    username: 'demo_user',
+    ssl: false,
+    timeout: 30,
+    status: 'connected',
+    createdAt: new Date().toISOString(),
+    lastTested: new Date().toISOString(),
+  },
+  {
     id: 'conn-1',
     name: 'Production SQL Server',
     type: 'sqlserver',
