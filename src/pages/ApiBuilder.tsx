@@ -288,9 +288,14 @@ FETCH NEXT @pageSize ROWS ONLY;`;
         const data = await response.json();
 
         if (data.success && data.data) {
+          // Convert object rows to arrays for table display
+          const rowsAsArrays = data.data.rows.map((row: any) => 
+            data.data.columns.map((col: string) => row[col])
+          );
+          
           setQueryResult({
             columns: data.data.columns,
-            rows: data.data.rows.slice(0, 5),
+            rows: rowsAsArrays.slice(0, 5),
             rowCount: data.data.rowCount,
             executionTime: data.data.executionTime,
             connectionName: data.data.connectionName,
