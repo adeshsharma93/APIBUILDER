@@ -60,7 +60,7 @@ export class SchemaService {
       const [tables] = await pool.execute(`
         SELECT 
           TABLE_NAME as name,
-          TABLE_SCHEMA as schema,
+          TABLE_SCHEMA as \`schema\`,
           TABLE_ROWS as rowCount
         FROM information_schema.TABLES
         WHERE TABLE_SCHEMA = DATABASE()
