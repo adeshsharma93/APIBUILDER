@@ -124,8 +124,7 @@ export const DatabaseExplorer: React.FC = () => {
         console.log('Schema API Response:', data);
         
         if (data.success) {
-          // Extract tables array from response (data.data.tables)
-          const tablesArray = data.data?.tables || [];
+    const tablesArray = data.tables || [];
           console.log('Tables array:', tablesArray);
           setTables(tablesArray);
           addToast('success', `Loaded ${tablesArray.length} tables from ${selectedConnection.name}`);
