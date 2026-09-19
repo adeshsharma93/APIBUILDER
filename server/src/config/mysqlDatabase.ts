@@ -1,14 +1,27 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
+import path from 'path';
 
-dotenv.config();
+// Load .env from server directory
+dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 // MySQL Application database configuration
+const MYSQL_PASSWORD = process.env.MYSQL_DB_PASSWORD;
+
+if (!MYSQL_PASSWORD) {
+  console.error('❌ ERROR: MYSQL_DB_PASSWORD is not set in .env file!');
+  console.error('📝 Please create server/.env file with your MySQL password:');
+  console.error('   MYSQL_DB_PASSWORD=your_mysql_password_here');
+  console.error('');
+  console.error('📖 See server/.env.example for reference');
+  throw new Error('MySQL password not configured. Please set MYSQL_DB_PASSWORD in server/.env');
+}
+
 export const mysqlAppDbConfig: mysql.ConnectionOptions = {
   host: process.env.MYSQL_DB_HOST || 'localhost',
   port: parseInt(process.env.MYSQL_DB_PORT || '3306'),
   user: process.env.MYSQL_DB_USER || 'root',
-  password: process.env.MYSQL_DB_PASSWORD || '',
+  password: MYSQL_PASSWORD,
   database: process.env.MYSQL_DB_NAME || 'sql_api_builder',
   waitForConnections: true,
   connectionLimit: 10,
@@ -22,14 +35,63 @@ let mysqlPool: mysql.Pool | null = null;
 
 export async function getMysqlPool(): Promise<mysql.Pool> {
   if (!mysqlPool) {
-    mysqlPool = mysql.createPool(mysqlAppDbConfig);
-    console.log('✅ MySQL application database connected');
+    try {
+      mysqlPool = mysql.createPool(mysqlAppDbConfig);
+      
+      // Test the connection
+      const connection = await mysqlPool.getConnection();
+      await connection.ping();
+      connection.release();
+      
+      console.log('✅ MySQL application database connected');
+      console.log(`   Host: ${mysqlAppDbConfig.host}`);
+      console.log(`   Database: ${mysqlAppDbConfig.database}`);
+      console.log(`   User: ${mysqlAppDbConfig.user}`);
+    } catch (error: any) {
+      console.error('❌ Failed to connect to MySQL application database');
+      console.error(`   Error: ${error.message}`);
+      console.error('');
+      console.error('💡 Troubleshooting:');
+      console.error('   1. Check if MySQL is running');
+      console.error('   2. Verify credentials in server/.env');
+      console.error('   3. Ensure database exists: CREATE DATABASE sql_api_builder;');
+      console.error('   4. Check user permissions');
+      throw error;
+    }
   }
   return mysqlPool;
 }
 
 // Dynamic connection pools for user MySQL databases
 const userMysqlPools: Map<string, mysql.Pool> = new Map();
+
+/**
+ * Remove and close a user database connection pool
+ * Call this when a connection is deleted or credentials change
+ */
+export function removeUserMysqlPool(connectionId: string): void {
+  const pool = userMysqlPools.get(connectionId);
+  if (pool) {
+    pool.end().then(() => {
+      console.log(`🗑️ Removed and closed pool for connection: ${connectionId}`);
+    }).catch((error) => {
+      console.error(`❌ Error closing pool for connection ${connectionId}:`, error.message);
+    });
+    userMysqlPools.delete(connectionId);
+  }
+}
+
+/**
+ * Clear all cached connection pools
+ * Useful for cleanup or testing
+ */
+export async function clearAllUserPools(): Promise<void> {
+  const connectionIds = Array.from(userMysqlPools.keys());
+  for (const id of connectionIds) {
+    removeUserMysqlPool(id);
+  }
+  console.log(`🗑️ Cleared all ${connectionIds.length} user connection pools`);
+}
 
 export async function getUserMysqlPool(connectionId: string): Promise<mysql.Pool> {
   if (userMysqlPools.has(connectionId)) {

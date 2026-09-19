@@ -52,7 +52,7 @@ export class ApiExecutionService {
         };
       }
 
-      let result: any[];
+      let result: any;
       
       if (input.dbType === 'mysql') {
         result = await this.executeMysqlQuery(input, validation.isSelect);
@@ -62,9 +62,24 @@ export class ApiExecutionService {
 
       const executionTime = Date.now() - startTime;
 
+      // Handle write operations (INSERT/UPDATE/DELETE)
+      if (!validation.isSelect) {
+        return {
+          success: true,
+          data: [],
+          rowsAffected: result,
+          rowCount: 0,
+          executionTime,
+          message: `Query executed successfully. ${result} row(s) affected.`,
+        };
+      }
+
+      // Handle SELECT queries
+      const data = result as any[];
+
       // Get total count for pagination
       let pagination = undefined;
-      if (input.page && input.pageSize && validation.isSelect) {
+      if (input.page && input.pageSize) {
         try {
           const total = await this.getTotalCount(input);
           pagination = {
@@ -80,8 +95,8 @@ export class ApiExecutionService {
 
       return {
         success: true,
-        data: result,
-        rowCount: result.length,
+        data,
+        rowCount: data.length,
         executionTime,
         pagination,
       };
@@ -142,8 +157,11 @@ export class ApiExecutionService {
       }
     }
     
-    // Add pagination for MySQL (only for SELECT)
-    if (input.page && input.pageSize && isSelect) {
+    // Remove trailing semicolon before adding pagination
+    sql = sql.replace(/;\s*$/, '');
+    
+    // Add pagination for MySQL (only for SELECT, and only if not already present)
+    if (input.page && input.pageSize && isSelect && !/LIMIT\s+\d+/i.test(sql)) {
       const offset = (input.page - 1) * input.pageSize;
       sql += `\nLIMIT ${input.pageSize} OFFSET ${offset}`;
     }
@@ -179,8 +197,11 @@ export class ApiExecutionService {
 
     let sql = input.sql;
 
-    // Add pagination for SQL Server (only for SELECT)
-    if (input.page && input.pageSize && isSelect) {
+    // Remove trailing semicolon before adding pagination
+    sql = sql.replace(/;\s*$/, '');
+
+    // Add pagination for SQL Server (only for SELECT, and only if not already present)
+    if (input.page && input.pageSize && isSelect && !/OFFSET\s+\d+\s+ROWS/i.test(sql)) {
       const offset = (input.page - 1) * input.pageSize;
       if (!/ORDER\s+BY/i.test(sql)) {
         sql += '\nORDER BY (SELECT NULL)';
@@ -205,6 +226,7 @@ export class ApiExecutionService {
   private async getTotalCount(input: ExecuteQueryInput): Promise<number> {
     // Remove pagination and SELECT columns, replace with COUNT(*)
     let countSql = input.sql
+      .replace(/;\s*$/, '') // Remove trailing semicolon
       .replace(/ORDER\s+BY[\s\S]+$/i, '')
       .replace(/LIMIT\s+\d+(\s+OFFSET\s+\d+)?/i, '')
       .replace(/OFFSET\s+\d+\s+ROWS/i, '')
@@ -283,6 +305,33 @@ export class ApiExecutionService {
     }
 
     const api = apiResult.recordset[0];
+
+    // Validate that the database connection still exists and is active
+    const { databaseConnectionService } = await import('./databaseConnectionService');
+    const connection = await databaseConnectionService.getConnection(
+      api.connection_id, 
+      api.db_type
+    );
+
+    if (!connection) {
+      return {
+        success: false,
+        error: {
+          code: 'CONNECTION_NOT_FOUND',
+          message: 'Database connection no longer exists. Please update the API configuration.',
+        },
+      };
+    }
+
+    if (connection.status !== 'connected') {
+      return {
+        success: false,
+        error: {
+          code: 'CONNECTION_NOT_ACTIVE',
+          message: `Database connection is not active (status: ${connection.status}). Please test the connection.`,
+        },
+      };
+    }
 
     // Validate parameters
     const queryParams = JSON.parse(api.query_parameters || '[]');

@@ -93,6 +93,21 @@ export function checkApiAccess(apiId: string) {
  */
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 
+// Cleanup expired rate limit entries every minute to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [key, value] of rateLimitStore.entries()) {
+    if (now > value.resetTime) {
+      rateLimitStore.delete(key);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    console.log(`🧹 Cleaned up ${cleaned} expired rate limit entries`);
+  }
+}, 60000); // Clean up every 60 seconds
+
 export function rateLimit(maxRequests: number, windowMs: number) {
   return (req: Request, res: Response, next: NextFunction) => {
     const key = req.apiKey?.id || req.ip;
