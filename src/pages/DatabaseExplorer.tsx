@@ -111,8 +111,10 @@ export const DatabaseExplorer: React.FC = () => {
         console.log('Schema API Response:', data);
         
         if (data.success) {
-          setTables(data.data);
-          addToast('success', `Loaded ${data.data.length} tables from ${selectedConnection.name}`);
+          // Extract tables array from response (data.data.tables)
+          const tablesArray = data.data?.tables || [];
+          setTables(tablesArray);
+          addToast('success', `Loaded ${tablesArray.length} tables from ${selectedConnection.name}`);
         } else {
           throw new Error(data.error?.message || 'Failed to fetch tables');
         }
@@ -145,7 +147,7 @@ export const DatabaseExplorer: React.FC = () => {
     });
   };
 
-  const filteredTables = tables.filter(
+  const filteredTables = (tables || []).filter(
     (t: TableSchema) => t.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
