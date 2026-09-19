@@ -142,6 +142,9 @@ export class ApiExecutionService {
       }
     }
     
+    // Remove trailing semicolon before adding pagination
+    sql = sql.replace(/;\s*$/, '');
+    
     // Add pagination for MySQL (only for SELECT, and only if not already present)
     if (input.page && input.pageSize && isSelect && !/LIMIT\s+\d+/i.test(sql)) {
       const offset = (input.page - 1) * input.pageSize;
@@ -179,6 +182,9 @@ export class ApiExecutionService {
 
     let sql = input.sql;
 
+    // Remove trailing semicolon before adding pagination
+    sql = sql.replace(/;\s*$/, '');
+
     // Add pagination for SQL Server (only for SELECT, and only if not already present)
     if (input.page && input.pageSize && isSelect && !/OFFSET\s+\d+\s+ROWS/i.test(sql)) {
       const offset = (input.page - 1) * input.pageSize;
@@ -205,6 +211,7 @@ export class ApiExecutionService {
   private async getTotalCount(input: ExecuteQueryInput): Promise<number> {
     // Remove pagination and SELECT columns, replace with COUNT(*)
     let countSql = input.sql
+      .replace(/;\s*$/, '') // Remove trailing semicolon
       .replace(/ORDER\s+BY[\s\S]+$/i, '')
       .replace(/LIMIT\s+\d+(\s+OFFSET\s+\d+)?/i, '')
       .replace(/OFFSET\s+\d+\s+ROWS/i, '')
