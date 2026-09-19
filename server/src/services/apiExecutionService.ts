@@ -142,8 +142,8 @@ export class ApiExecutionService {
       }
     }
     
-    // Add pagination for MySQL (only for SELECT)
-    if (input.page && input.pageSize && isSelect) {
+    // Add pagination for MySQL (only for SELECT, and only if not already present)
+    if (input.page && input.pageSize && isSelect && !/LIMIT\s+\d+/i.test(sql)) {
       const offset = (input.page - 1) * input.pageSize;
       sql += `\nLIMIT ${input.pageSize} OFFSET ${offset}`;
     }
@@ -179,8 +179,8 @@ export class ApiExecutionService {
 
     let sql = input.sql;
 
-    // Add pagination for SQL Server (only for SELECT)
-    if (input.page && input.pageSize && isSelect) {
+    // Add pagination for SQL Server (only for SELECT, and only if not already present)
+    if (input.page && input.pageSize && isSelect && !/OFFSET\s+\d+\s+ROWS/i.test(sql)) {
       const offset = (input.page - 1) * input.pageSize;
       if (!/ORDER\s+BY/i.test(sql)) {
         sql += '\nORDER BY (SELECT NULL)';
