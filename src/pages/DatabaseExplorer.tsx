@@ -37,12 +37,29 @@ export const DatabaseExplorer: React.FC = () => {
       fetchTables();
     } else {
       setTables([]);
-      setError(null);
+      if (selectedConnectionId && selectedConnection && selectedConnection.status !== 'connected') {
+        setError(`Connection status: ${selectedConnection.status}. Please test the connection first.`);
+      } else {
+        setError(null);
+      }
     }
-  }, [selectedConnectionId]);
+  }, [selectedConnectionId, selectedConnection?.status]);
 
   const fetchTables = async () => {
-    if (!selectedConnectionId) return;
+    if (!selectedConnectionId) {
+      setError('No connection selected');
+      return;
+    }
+
+    if (!selectedConnection) {
+      setError('Connection not found');
+      return;
+    }
+
+    if (selectedConnection.status !== 'connected') {
+      setError(`Connection status: ${selectedConnection.status}. Please test the connection first.`);
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -58,21 +75,43 @@ export const DatabaseExplorer: React.FC = () => {
         setTables(mockTables);
         addToast('success', `Loaded ${mockTables.length} tables from demo database`);
       } else {
+        // Check if backend is running
+        try {
+          const healthCheck = await fetch('http://localhost:3001/health');
+          if (!healthCheck.ok) {
+            throw new Error('Backend server is not responding');
+          }
+        } catch (healthErr) {
+          throw new Error('Backend server is not running. Please start it with: cd server && npm run dev');
+        }
+
         // Fetch real schema from backend API for production connections
-        const response = await fetch(`http://localhost:3001/api/schema/tables/${selectedConnectionId}?dbType=${selectedConnection?.type}`);
+        const apiUrl = `http://localhost:3001/api/schema/tables/${selectedConnectionId}?dbType=${selectedConnection.type}`;
+        console.log('Fetching schema from:', apiUrl);
+        
+        const response = await fetch(apiUrl);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('API Error Response:', errorText);
+          throw new Error(`Backend error (${response.status}): ${errorText}`);
+        }
+        
         const data = await response.json();
+        console.log('Schema API Response:', data);
         
         if (data.success) {
           setTables(data.data);
-          addToast('success', `Loaded ${data.data.length} tables from ${selectedConnection?.name}`);
+          addToast('success', `Loaded ${data.data.length} tables from ${selectedConnection.name}`);
         } else {
           throw new Error(data.error?.message || 'Failed to fetch tables');
         }
       }
     } catch (err: any) {
       console.error('Error fetching tables:', err);
-      setError(err.message || 'Failed to load tables');
-      addToast('error', 'Failed to load database schema');
+      const errorMessage = err.message || 'Failed to load tables';
+      setError(errorMessage);
+      addToast('error', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -163,17 +202,49 @@ export const DatabaseExplorer: React.FC = () => {
 
           <div className="p-2 max-h-[600px] overflow-y-auto">
             {!selectedConnection ? (
-              <div className="text-center py-8">
+              <div className="text-center py-8 px-4">
                 <Database className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-                <p className="text-sm text-gray-400">No connection selected</p>
-                <p className="text-xs text-gray-600 mt-1">Please select a database connection</p>
+                <p className="text-sm text-gray-400 font-medium mb-2">No connection selected</p>
+                {connections.length === 0 ? (
+                  <div className="text-left text-xs text-gray-400 space-y-2">
+                    <p className="font-medium text-gray-300">Get started:</p>
+                    <div className="bg-gray-800/50 rounded p-2">
+                      <p className="text-blue-400 font-medium">1. Create a connection:</p>
+                      <p className="text-gray-300 mt-1">Go to Database Connections and create a new connection</p>
+                    </div>
+                    <div className="bg-gray-800/50 rounded p-2">
+                      <p className="text-blue-400 font-medium">2. Or use demo mode:</p>
+                      <p className="text-gray-300 mt-1">The demo connection will be available after creating your first connection</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-600 mt-1">Please select a database connection from the dropdown above</p>
+                )}
               </div>
             ) : selectedConnection.status !== 'connected' ? (
-              <div className="text-center py-8">
+              <div className="text-center py-8 px-4">
                 <Database className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-                <p className="text-sm text-gray-400">Connection not active</p>
-                <p className="text-xs text-gray-600 mt-1">Please connect to the database first</p>
-                <p className="text-xs text-gray-600 mt-1">Go to Database Connections to test the connection</p>
+                <p className="text-sm text-gray-400 font-medium mb-2">Connection not active</p>
+                <div className="bg-yellow-900/20 border border-yellow-800/50 rounded-lg p-3 mb-3">
+                  <p className="text-xs text-yellow-300">
+                    Status: <span className="font-mono font-medium">{selectedConnection.status}</span>
+                  </p>
+                </div>
+                <div className="text-left text-xs text-gray-400 space-y-2">
+                  <p className="font-medium text-gray-300">To fix this:</p>
+                  <div className="bg-gray-800/50 rounded p-2">
+                    <p className="text-blue-400 font-medium">1. Go to Database Connections</p>
+                    <p className="text-gray-300 mt-1">Click the "Test" button on your connection</p>
+                  </div>
+                  <div className="bg-gray-800/50 rounded p-2">
+                    <p className="text-blue-400 font-medium">2. Check backend is running</p>
+                    <code className="text-gray-300 block mt-1">cd server && npm run dev</code>
+                  </div>
+                  <div className="bg-gray-800/50 rounded p-2">
+                    <p className="text-blue-400 font-medium">3. Verify credentials</p>
+                    <p className="text-gray-300 mt-1">Make sure your MySQL/SQL Server credentials are correct</p>
+                  </div>
+                </div>
               </div>
             ) : isLoading ? (
               <div className="text-center py-8">
@@ -182,13 +253,40 @@ export const DatabaseExplorer: React.FC = () => {
                 <p className="text-xs text-gray-600 mt-1">Fetching tables from database</p>
               </div>
             ) : error ? (
-              <div className="text-center py-8">
+              <div className="text-center py-8 px-4">
                 <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
-                <p className="text-sm text-red-400">Failed to load schema</p>
-                <p className="text-xs text-gray-600 mt-1">{error}</p>
+                <p className="text-sm text-red-400 font-medium mb-2">Failed to load schema</p>
+                <div className="bg-red-900/20 border border-red-800/50 rounded-lg p-3 mb-3">
+                  <p className="text-xs text-red-300 break-words">{error}</p>
+                </div>
+                <div className="text-left text-xs text-gray-400 space-y-2 mb-4">
+                  <p className="font-medium text-gray-300">Troubleshooting:</p>
+                  {error.includes('Backend server is not running') && (
+                    <div className="bg-gray-800/50 rounded p-2">
+                      <p className="text-blue-400 font-medium">1. Start the backend server:</p>
+                      <code className="text-gray-300 block mt-1">cd server && npm run dev</code>
+                    </div>
+                  )}
+                  {error.includes('Connection') && (
+                    <div className="bg-gray-800/50 rounded p-2">
+                      <p className="text-blue-400 font-medium">2. Check your connection:</p>
+                      <p className="text-gray-300 mt-1">Go to Database Connections and test the connection</p>
+                    </div>
+                  )}
+                  {error.includes('not found') && (
+                    <div className="bg-gray-800/50 rounded p-2">
+                      <p className="text-blue-400 font-medium">3. Connection not in database:</p>
+                      <p className="text-gray-300 mt-1">The connection may not be saved to the backend. Try recreating it.</p>
+                    </div>
+                  )}
+                  <div className="bg-gray-800/50 rounded p-2">
+                    <p className="text-blue-400 font-medium">Check browser console:</p>
+                    <p className="text-gray-300 mt-1">Press F12 and check the Console tab for detailed errors</p>
+                  </div>
+                </div>
                 <button
                   onClick={fetchTables}
-                  className="mt-3 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
                 >
                   Retry
                 </button>
