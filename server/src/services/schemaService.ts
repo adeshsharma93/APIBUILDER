@@ -52,11 +52,13 @@ export class SchemaService {
       console.log(`✅ Got MySQL pool for connection: ${connectionId}`);
     } catch (error: any) {
       console.error(`❌ Failed to get MySQL pool:`, error.message);
-      throw error;
+      console.error(`Error details:`, error);
+      throw new Error(`Failed to connect to database: ${error.message}`);
     }
     
     // Get all tables
     try {
+      console.log(`📊 Executing query to fetch tables...`);
       const [tables] = await pool.execute(`
         SELECT 
           TABLE_NAME as name,
@@ -67,60 +69,70 @@ export class SchemaService {
           AND TABLE_TYPE = 'BASE TABLE'
         ORDER BY TABLE_NAME
       `);
-      console.log(`✅ Found ${(tables as any[]).length} tables`);
+      
+      const tableCount = (tables as any[]).length;
+      console.log(`✅ Found ${tableCount} tables`);
+      
+      if (tableCount === 0) {
+        console.log(`⚠️ No tables found in database. Returning empty array.`);
+        return [];
+      }
 
     const tableList = tables as any[];
     const tablesWithDetails: TableInfo[] = [];
 
     for (const table of tableList) {
-      // Get columns for this table
-      const [columns] = await pool.execute(`
-        SELECT 
-          COLUMN_NAME as name,
-          DATA_TYPE as dataType,
-          IS_NULLABLE as nullable,
-          COLUMN_KEY as columnKey,
-          CHARACTER_MAXIMUM_LENGTH as maxLength,
-          COLUMN_DEFAULT as defaultValue
-        FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = ?
-        ORDER BY ORDINAL_POSITION
-      `, [table.name]);
+      try {
+        console.log(`📋 Fetching details for table: ${table.name}`);
+        
+        // Get columns for this table
+        const [columns] = await pool.execute(`
+          SELECT 
+            COLUMN_NAME as name,
+            DATA_TYPE as dataType,
+            IS_NULLABLE as nullable,
+            COLUMN_KEY as columnKey,
+            CHARACTER_MAXIMUM_LENGTH as maxLength,
+            COLUMN_DEFAULT as defaultValue
+          FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?
+          ORDER BY ORDINAL_POSITION
+        `, [table.name]);
 
-      // Get primary keys
-      const [primaryKeys] = await pool.execute(`
-        SELECT COLUMN_NAME
-        FROM information_schema.KEY_COLUMN_USAGE
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = ?
-          AND CONSTRAINT_NAME = 'PRIMARY'
-      `, [table.name]);
+        // Get primary keys
+        const [primaryKeys] = await pool.execute(`
+          SELECT COLUMN_NAME
+          FROM information_schema.KEY_COLUMN_USAGE
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?
+            AND CONSTRAINT_NAME = 'PRIMARY'
+        `, [table.name]);
 
-      // Get foreign keys
-      const [foreignKeys] = await pool.execute(`
-        SELECT 
-          COLUMN_NAME as columnName,
-          REFERENCED_TABLE_NAME as referencedTable,
-          REFERENCED_COLUMN_NAME as referencedColumn
-        FROM information_schema.KEY_COLUMN_USAGE
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = ?
-          AND REFERENCED_TABLE_NAME IS NOT NULL
-      `, [table.name]);
+        // Get foreign keys
+        const [foreignKeys] = await pool.execute(`
+          SELECT 
+            COLUMN_NAME as columnName,
+            REFERENCED_TABLE_NAME as referencedTable,
+            REFERENCED_COLUMN_NAME as referencedColumn
+          FROM information_schema.KEY_COLUMN_USAGE
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?
+            AND REFERENCED_TABLE_NAME IS NOT NULL
+        `, [table.name]);
 
-      // Get indexes
-      const [indexes] = await pool.execute(`
-        SELECT 
-          INDEX_NAME as name,
-          COLUMN_NAME as columnName,
-          NON_UNIQUE as nonUnique,
-          SEQ_IN_INDEX as seqInIndex
-        FROM information_schema.STATISTICS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = ?
-        ORDER BY INDEX_NAME, SEQ_IN_INDEX
-      `, [table.name]);
+        // Get indexes
+        const [indexes] = await pool.execute(`
+          SELECT 
+            INDEX_NAME as name,
+            COLUMN_NAME as columnName,
+            NON_UNIQUE as nonUnique,
+            SEQ_IN_INDEX as seqInIndex
+          FROM information_schema.STATISTICS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?
+          ORDER BY INDEX_NAME, SEQ_IN_INDEX
+        `, [table.name]);
 
       // Process columns
       const pkColumns = (primaryKeys as any[]).map(pk => pk.COLUMN_NAME);
@@ -159,11 +171,20 @@ export class SchemaService {
         columns: columnInfos,
         indexes: Array.from(indexMap.values()),
       });
+      
+      console.log(`✅ Successfully processed table: ${table.name}`);
+      } catch (tableError: any) {
+        console.error(`❌ Error processing table ${table.name}:`, tableError.message);
+        // Continue with other tables even if one fails
+        console.log(`⚠️ Skipping table ${table.name} due to error`);
+      }
     }
 
+    console.log(`✅ Successfully fetched ${tablesWithDetails.length} tables with details`);
     return tablesWithDetails;
     } catch (error: any) {
       console.error('❌ Error fetching MySQL tables:', error.message);
+      console.error('Error stack:', error.stack);
       throw new Error(`Failed to fetch tables: ${error.message}`);
     }
   }

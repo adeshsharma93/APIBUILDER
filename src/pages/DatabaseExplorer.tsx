@@ -94,25 +94,39 @@ export const DatabaseExplorer: React.FC = () => {
         console.log('Fetching schema from:', apiUrl);
         
         const response = await fetchWithTimeout(apiUrl, {}, 30000);
+        console.log('Response status:', response.status, response.statusText);
+        
+        // Get response text first for debugging
+        const responseText = await response.text();
+        console.log('Raw response:', responseText);
         
         if (!response.ok) {
           let errorMessage = 'Failed to fetch schema';
           try {
-            const errorData = await response.json();
+            const errorData = JSON.parse(responseText);
             errorMessage = errorData.error?.message || errorMessage;
           } catch {
-            errorMessage = `Server error: ${response.statusText}`;
+            errorMessage = `Server error (${response.status}): ${responseText || response.statusText}`;
           }
           console.error('API Error Response:', errorMessage);
           throw new Error(errorMessage);
         }
         
-        const data = await response.json();
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('Failed to parse JSON response:', parseError);
+          console.error('Response text was:', responseText);
+          throw new Error('Invalid response from server. Check backend console for errors.');
+        }
+        
         console.log('Schema API Response:', data);
         
         if (data.success) {
           // Extract tables array from response (data.data.tables)
           const tablesArray = data.data?.tables || [];
+          console.log('Tables array:', tablesArray);
           setTables(tablesArray);
           addToast('success', `Loaded ${tablesArray.length} tables from ${selectedConnection.name}`);
         } else {
@@ -311,8 +325,12 @@ export const DatabaseExplorer: React.FC = () => {
               </div>
             ) : (
             <>
-            {/* Schemas */}
-            {['dbo'].map((schema) => (
+            {/* Get unique schemas from tables */}
+            {(() => {
+              const schemas = Array.from(new Set(filteredTables.map(t => t.schema || 'default')));
+              return schemas.map((schema) => {
+                const schemaTables = filteredTables.filter(t => (t.schema || 'default') === schema);
+                return (
               <div key={schema}>
                 <button
                   onClick={() => toggleSchema(schema)}
@@ -324,12 +342,12 @@ export const DatabaseExplorer: React.FC = () => {
                     <ChevronRight className="w-4 h-4 text-gray-500" />
                   )}
                   <span className="font-medium">{schema}</span>
-                  <span className="ml-auto text-xs text-gray-600">{filteredTables.length} tables</span>
+                  <span className="ml-auto text-xs text-gray-600">{schemaTables.length} tables</span>
                 </button>
 
                 {expandedSchemas.has(schema) && (
                   <div className="ml-4 mt-1 space-y-0.5">
-                    {filteredTables.map((table: TableSchema) => (
+                    {schemaTables.map((table: TableSchema) => (
                       <div key={table.name}>
                         <button
                           onClick={() => {
@@ -379,7 +397,9 @@ export const DatabaseExplorer: React.FC = () => {
                   </div>
                 )}
               </div>
-            ))}
+                );
+              });
+            })()}
             </>
             )}
           </div>
