@@ -311,8 +311,12 @@ export const DatabaseExplorer: React.FC = () => {
               </div>
             ) : (
             <>
-            {/* Schemas */}
-            {['dbo'].map((schema) => (
+            {/* Get unique schemas from tables */}
+            {(() => {
+              const schemas = Array.from(new Set(filteredTables.map(t => t.schema || 'default')));
+              return schemas.map((schema) => {
+                const schemaTables = filteredTables.filter(t => (t.schema || 'default') === schema);
+                return (
               <div key={schema}>
                 <button
                   onClick={() => toggleSchema(schema)}
@@ -324,12 +328,12 @@ export const DatabaseExplorer: React.FC = () => {
                     <ChevronRight className="w-4 h-4 text-gray-500" />
                   )}
                   <span className="font-medium">{schema}</span>
-                  <span className="ml-auto text-xs text-gray-600">{filteredTables.length} tables</span>
+                  <span className="ml-auto text-xs text-gray-600">{schemaTables.length} tables</span>
                 </button>
 
                 {expandedSchemas.has(schema) && (
                   <div className="ml-4 mt-1 space-y-0.5">
-                    {filteredTables.map((table: TableSchema) => (
+                    {schemaTables.map((table: TableSchema) => (
                       <div key={table.name}>
                         <button
                           onClick={() => {
@@ -379,7 +383,9 @@ export const DatabaseExplorer: React.FC = () => {
                   </div>
                 )}
               </div>
-            ))}
+                );
+              });
+            })()}
             </>
             )}
           </div>
