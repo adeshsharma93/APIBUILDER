@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+import mysql, { Pool, ConnectionOptions } from 'mysql2/promise';
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -17,7 +17,7 @@ if (!MYSQL_PASSWORD) {
   throw new Error('MySQL password not configured. Please set MYSQL_DB_PASSWORD in server/.env');
 }
 
-export const mysqlAppDbConfig: mysql.ConnectionOptions = {
+export const mysqlAppDbConfig: ConnectionOptions = {
   host: process.env.MYSQL_DB_HOST || 'localhost',
   port: parseInt(process.env.MYSQL_DB_PORT || '3306'),
   user: process.env.MYSQL_DB_USER || 'root',
@@ -31,9 +31,9 @@ export const mysqlAppDbConfig: mysql.ConnectionOptions = {
 };
 
 // Connection pool for MySQL application database
-let mysqlPool: mysql.Pool | null = null;
+let mysqlPool: Pool | null = null;
 
-export async function getMysqlPool(): Promise<mysql.Pool> {
+export async function getMysqlPool(): Promise<Pool> {
   if (!mysqlPool) {
     try {
       mysqlPool = mysql.createPool(mysqlAppDbConfig);

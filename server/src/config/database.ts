@@ -1,10 +1,10 @@
-import sql from 'mssql';
+import sql, { config, ConnectionPool } from 'mssql';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 // Application database configuration (stores users, APIs, logs, etc.)
-export const appDbConfig: sql.config = {
+export const appDbConfig: config = {
   server: process.env.APP_DB_SERVER || 'localhost',
   database: process.env.APP_DB_NAME || 'SQLAPIBuilder',
   user: process.env.APP_DB_USER || 'sa',
@@ -23,9 +23,9 @@ export const appDbConfig: sql.config = {
 };
 
 // Connection pool for application database
-let appPool: sql.ConnectionPool | null = null;
+let appPool: ConnectionPool | null = null;
 
-export async function getAppDbPool(): Promise<sql.ConnectionPool> {
+export async function getAppDbPool(): Promise<ConnectionPool> {
   if (!appPool) {
     appPool = await new sql.ConnectionPool(appDbConfig).connect();
     console.log('✅ Application database connected');
@@ -34,9 +34,9 @@ export async function getAppDbPool(): Promise<sql.ConnectionPool> {
 }
 
 // Dynamic connection pools for user databases
-const userDbPools: Map<string, sql.ConnectionPool> = new Map();
+const userDbPools: Map<string, ConnectionPool> = new Map();
 
-export async function getUserDbPool(connectionId: string): Promise<sql.ConnectionPool> {
+export async function getUserDbPool(connectionId: string): Promise<ConnectionPool> {
   if (userDbPools.has(connectionId)) {
     return userDbPools.get(connectionId)!;
   }
