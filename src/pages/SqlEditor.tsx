@@ -82,9 +82,14 @@ ORDER BY CreatedAt DESC;`);
         const data = await response.json();
 
         if (data.success && data.data) {
+          // Convert object rows to arrays for table display
+          const rowsAsArrays = data.data.rows.map((row: any) => 
+            data.data.columns.map((col: string) => row[col])
+          );
+          
           setQueryResults({
             columns: data.data.columns,
-            rows: data.data.rows,
+            rows: rowsAsArrays,
             rowCount: data.data.rowCount,
             executionTime: data.data.executionTime,
           });
