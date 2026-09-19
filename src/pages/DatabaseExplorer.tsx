@@ -94,25 +94,39 @@ export const DatabaseExplorer: React.FC = () => {
         console.log('Fetching schema from:', apiUrl);
         
         const response = await fetchWithTimeout(apiUrl, {}, 30000);
+        console.log('Response status:', response.status, response.statusText);
+        
+        // Get response text first for debugging
+        const responseText = await response.text();
+        console.log('Raw response:', responseText);
         
         if (!response.ok) {
           let errorMessage = 'Failed to fetch schema';
           try {
-            const errorData = await response.json();
+            const errorData = JSON.parse(responseText);
             errorMessage = errorData.error?.message || errorMessage;
           } catch {
-            errorMessage = `Server error: ${response.statusText}`;
+            errorMessage = `Server error (${response.status}): ${responseText || response.statusText}`;
           }
           console.error('API Error Response:', errorMessage);
           throw new Error(errorMessage);
         }
         
-        const data = await response.json();
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('Failed to parse JSON response:', parseError);
+          console.error('Response text was:', responseText);
+          throw new Error('Invalid response from server. Check backend console for errors.');
+        }
+        
         console.log('Schema API Response:', data);
         
         if (data.success) {
           // Extract tables array from response (data.data.tables)
           const tablesArray = data.data?.tables || [];
+          console.log('Tables array:', tablesArray);
           setTables(tablesArray);
           addToast('success', `Loaded ${tablesArray.length} tables from ${selectedConnection.name}`);
         } else {
