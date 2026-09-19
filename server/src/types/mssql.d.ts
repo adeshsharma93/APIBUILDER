@@ -1,4 +1,23 @@
 declare module 'mssql' {
+  export interface config {
+    server: string;
+    database: string;
+    user: string;
+    password: string;
+    port?: number;
+    options?: {
+      encrypt?: boolean;
+      trustServerCertificate?: boolean;
+      enableArithAbort?: boolean;
+      connectTimeout?: number;
+    };
+    pool?: {
+      max?: number;
+      min?: number;
+      idleTimeoutMillis?: number;
+    };
+  }
+
   export interface IConnectionConfig {
     server: string;
     database: string;
