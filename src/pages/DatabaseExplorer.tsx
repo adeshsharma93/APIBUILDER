@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { TableSchema, ColumnSchema } from '../types';
 import { useStore } from '../store/useStore';
+import { fetchWithTimeout } from '../utils/apiClient';
 
 export const DatabaseExplorer: React.FC = () => {
   const { connections, addToast } = useStore();
@@ -77,11 +78,14 @@ export const DatabaseExplorer: React.FC = () => {
       } else {
         // Check if backend is running
         try {
-          const healthCheck = await fetch('http://localhost:3001/health');
+          const healthCheck = await fetchWithTimeout('http://localhost:3001/health', {}, 5000);
           if (!healthCheck.ok) {
             throw new Error('Backend server is not responding');
           }
-        } catch (healthErr) {
+        } catch (healthErr: any) {
+          if (healthErr.message.includes('timeout')) {
+            throw new Error('Backend server is not responding (timeout). Please check if it is running.');
+          }
           throw new Error('Backend server is not running. Please start it with: cd server && npm run dev');
         }
 
@@ -89,12 +93,18 @@ export const DatabaseExplorer: React.FC = () => {
         const apiUrl = `http://localhost:3001/api/schema/tables/${selectedConnectionId}?dbType=${selectedConnection.type}`;
         console.log('Fetching schema from:', apiUrl);
         
-        const response = await fetch(apiUrl);
+        const response = await fetchWithTimeout(apiUrl, {}, 30000);
         
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error('API Error Response:', errorText);
-          throw new Error(`Backend error (${response.status}): ${errorText}`);
+          let errorMessage = 'Failed to fetch schema';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error?.message || errorMessage;
+          } catch {
+            errorMessage = `Server error: ${response.statusText}`;
+          }
+          console.error('API Error Response:', errorMessage);
+          throw new Error(errorMessage);
         }
         
         const data = await response.json();

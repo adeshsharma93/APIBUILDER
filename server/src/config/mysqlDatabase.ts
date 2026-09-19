@@ -65,6 +65,34 @@ export async function getMysqlPool(): Promise<mysql.Pool> {
 // Dynamic connection pools for user MySQL databases
 const userMysqlPools: Map<string, mysql.Pool> = new Map();
 
+/**
+ * Remove and close a user database connection pool
+ * Call this when a connection is deleted or credentials change
+ */
+export function removeUserMysqlPool(connectionId: string): void {
+  const pool = userMysqlPools.get(connectionId);
+  if (pool) {
+    pool.end().then(() => {
+      console.log(`🗑️ Removed and closed pool for connection: ${connectionId}`);
+    }).catch((error) => {
+      console.error(`❌ Error closing pool for connection ${connectionId}:`, error.message);
+    });
+    userMysqlPools.delete(connectionId);
+  }
+}
+
+/**
+ * Clear all cached connection pools
+ * Useful for cleanup or testing
+ */
+export async function clearAllUserPools(): Promise<void> {
+  const connectionIds = Array.from(userMysqlPools.keys());
+  for (const id of connectionIds) {
+    removeUserMysqlPool(id);
+  }
+  console.log(`🗑️ Cleared all ${connectionIds.length} user connection pools`);
+}
+
 export async function getUserMysqlPool(connectionId: string): Promise<mysql.Pool> {
   if (userMysqlPools.has(connectionId)) {
     console.log(`✅ Using cached MySQL pool for connection: ${connectionId}`);
