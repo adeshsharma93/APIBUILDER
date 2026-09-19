@@ -14,6 +14,10 @@ const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
  * Returns: iv:authTag:encrypted (all base64 encoded)
  */
 export function encryptCredential(plaintext: string): string {
+  if (!plaintext || typeof plaintext !== 'string') {
+    throw new Error('Cannot encrypt empty or invalid plaintext');
+  }
+
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
 
@@ -23,7 +27,32 @@ export function encryptCredential(plaintext: string): string {
   const authTag = cipher.getAuthTag();
 
   // Format: iv:authTag:encrypted
-  return `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
+  const result = `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
+  
+  // Validate the result can be decrypted
+  try {
+    const parts = result.split(':');
+    if (parts.length !== 3) {
+      throw new Error('Encryption produced invalid format');
+    }
+  } catch (error) {
+    throw new Error('Encryption validation failed');
+  }
+
+  return result;
+}
+
+/**
+ * Test if a credential can be decrypted with the current key
+ * Useful for checking if credentials need to be re-encrypted
+ */
+export async function testDecryption(encryptedData: string): Promise<boolean> {
+  try {
+    await decryptCredential(encryptedData);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -33,15 +62,30 @@ export function encryptCredential(plaintext: string): string {
 export function decryptCredential(encryptedData: string): Promise<string> {
   return new Promise((resolve, reject) => {
     try {
+      // Validate input format
+      if (!encryptedData || typeof encryptedData !== 'string') {
+        throw new Error('Encrypted data is empty or invalid');
+      }
+
       const parts = encryptedData.split(':');
       if (parts.length !== 3) {
-        throw new Error('Invalid encrypted data format');
+        throw new Error(`Invalid encrypted data format. Expected 3 parts (iv:authTag:encrypted), got ${parts.length}`);
       }
 
       const [ivBase64, authTagBase64, encrypted] = parts;
 
+      // Validate base64 encoding
+      if (!ivBase64 || !authTagBase64 || !encrypted) {
+        throw new Error('One or more parts of encrypted data are empty');
+      }
+
       const iv = Buffer.from(ivBase64, 'base64');
       const authTag = Buffer.from(authTagBase64, 'base64');
+
+      // Validate buffer lengths
+      if (iv.length !== IV_LENGTH) {
+        throw new Error(`Invalid IV length. Expected ${IV_LENGTH}, got ${iv.length}`);
+      }
 
       const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
       decipher.setAuthTag(authTag);
@@ -50,8 +94,17 @@ export function decryptCredential(encryptedData: string): Promise<string> {
       decrypted += decipher.final('utf8');
 
       resolve(decrypted);
-    } catch (error) {
-      reject(new Error('Failed to decrypt credential'));
+    } catch (error: any) {
+      // Provide detailed error message
+      const errorMessage = error.message || 'Unknown error';
+      console.error('❌ Decryption failed:', errorMessage);
+      console.error('   This usually means:');
+      console.error('   1. The ENCRYPTION_KEY in .env has changed since the credential was encrypted');
+      console.error('   2. The encrypted data is corrupted');
+      console.error('   3. The credential was encrypted with a different key');
+      console.error('');
+      console.error('💡 Solution: Delete the connection and create a new one with the current ENCRYPTION_KEY');
+      reject(new Error(`Failed to decrypt credential: ${errorMessage}`));
     }
   });
 }
