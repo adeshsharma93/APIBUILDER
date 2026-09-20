@@ -141,7 +141,7 @@ router.post('/:id/test', async (req: Request, res: Response) => {
       username: connection.username || '',
       password: decrypt(connection.password_encrypted),
       ssl: connection.ssl_enabled || false,
-      type: connection.type as 'mysql' | 'sqlserver',
+      type: connection.type,
     });
 
     if (!result) {
