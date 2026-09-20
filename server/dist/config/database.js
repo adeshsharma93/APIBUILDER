@@ -54,7 +54,7 @@ async function getUserDbPool(connectionId) {
         };
     }
     const pool = await getAppDbPool();
-    const [rows] = await pool.query('SELECT * FROM connections WHERE id = ?', [connectionId]);
+    const [rows] = await pool.query('SELECT * FROM database_connections WHERE id = ?', [connectionId]);
     const recordset = rows;
     if (recordset.length === 0) {
         throw new Error('Database connection not found');
