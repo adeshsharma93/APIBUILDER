@@ -93,6 +93,8 @@ export interface ApiKey {
   id: string;
   name: string;
   keyPrefix: string;
+  key?: string; // Full API key for testing
+  fullKey?: string; // Alternative property for full key
   createdAt: string;
   expiresAt: string | null;
   lastUsed: string | null;

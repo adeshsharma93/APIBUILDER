@@ -54,46 +54,74 @@ export const ApiDetail: React.FC = () => {
     setIsTesting(true);
     setTestResult(null);
     
-    // Simulate API call with realistic delay
-    await new Promise((r) => setTimeout(r, 800 + Math.random() * 700));
-    
-    const responseTime = Math.floor(50 + Math.random() * 150);
-    
-    // Generate response based on API parameters
-    const mockData = api.parameters.length > 0 
-      ? [
-          { id: 1, name: 'Sample Record 1', ...testParams, created_at: new Date().toISOString() },
-          { id: 2, name: 'Sample Record 2', ...testParams, created_at: new Date().toISOString() },
-          { id: 3, name: 'Sample Record 3', ...testParams, created_at: new Date().toISOString() },
-        ]
-      : [
-          { id: 1, name: 'Record 1', created_at: new Date().toISOString() },
-          { id: 2, name: 'Record 2', created_at: new Date().toISOString() },
-          { id: 3, name: 'Record 3', created_at: new Date().toISOString() },
-        ];
-
-    setTestResult({
-      status: 200,
-      time: responseTime,
-      data: {
-        success: true,
-        data: mockData,
-        pagination: api.pagination ? {
-          page: 1,
-          pageSize: api.pageSize,
-          total: 156,
-          totalPages: Math.ceil(156 / api.pageSize),
-        } : undefined,
-        metadata: {
-          executionTime: responseTime,
-          rowCount: mockData.length,
-          cached: false,
-          apiVersion: api.version,
+    try {
+      // Build query parameters
+      const queryParams = new URLSearchParams();
+      for (const [key, value] of Object.entries(testParams)) {
+        if (value) queryParams.append(key, value);
+      }
+      
+      // Add pagination if enabled
+      if (api.pagination) {
+        queryParams.append('page', '1');
+        queryParams.append('pageSize', String(api.pageSize));
+      }
+      
+      // Get API key from localStorage for testing
+      const storedKeys = localStorage.getItem('sql-api-builder-storage');
+      let apiKey = '';
+      if (storedKeys) {
+        try {
+          const parsed = JSON.parse(storedKeys);
+          const apiKeys = parsed.apiKeys || [];
+          const activeKey = apiKeys.find((k: any) => k.isActive);
+          if (activeKey) {
+            // We need the actual key, not just the prefix
+            // For testing, we'll use a demo key or prompt user
+            apiKey = activeKey.key || activeKey.fullKey || '';
+          }
+        } catch (e) {
+          console.error('Failed to parse stored keys:', e);
         }
-      },
-    });
-    setIsTesting(false);
-    addToast('success', `Test successful - ${responseTime}ms response time`);
+      }
+      
+      // Make real API call to backend
+      const startTime = Date.now();
+      const response = await fetch(`http://localhost:3001/api/execute/${api.id}?${queryParams.toString()}`, {
+        method: api.method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+        },
+      });
+      
+      const responseTime = Date.now() - startTime;
+      const responseData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(responseData.error?.message || `HTTP ${response.status}`);
+      }
+      
+      setTestResult({
+        status: response.status,
+        time: responseTime,
+        data: responseData,
+      });
+      addToast('success', `Test successful - ${responseTime}ms response time`);
+    } catch (error: any) {
+      console.error('API test error:', error);
+      setTestResult({
+        status: 500,
+        time: 0,
+        data: {
+          success: false,
+          error: { code: 'TEST_ERROR', message: error.message },
+        },
+      });
+      addToast('error', `Test failed: ${error.message}`);
+    } finally {
+      setIsTesting(false);
+    }
   };
 
   const handleCopy = (text: string, label: string) => {
