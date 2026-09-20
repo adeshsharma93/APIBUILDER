@@ -13,33 +13,63 @@ const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
  * Encrypt a credential (password, API key, etc.)
  * Returns: iv:authTag:encrypted (all base64 encoded)
  */
-export function encryptCredential(plaintext: string): string {
-  if (!plaintext || typeof plaintext !== 'string') {
-    throw new Error('Cannot encrypt empty or invalid plaintext');
+export function encrypt(text: string): string {
+  if (!text || typeof text !== 'string') {
+    throw new Error('Cannot encrypt empty or invalid text');
   }
 
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
 
-  let encrypted = cipher.update(plaintext, 'utf8', 'base64');
+  let encrypted = cipher.update(text, 'utf8', 'base64');
   encrypted += cipher.final('base64');
 
   const authTag = cipher.getAuthTag();
 
   // Format: iv:authTag:encrypted
-  const result = `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
-  
-  // Validate the result can be decrypted
-  try {
-    const parts = result.split(':');
-    if (parts.length !== 3) {
-      throw new Error('Encryption produced invalid format');
-    }
-  } catch (error) {
-    throw new Error('Encryption validation failed');
+  return `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
+}
+
+/**
+ * Decrypt a credential
+ */
+export function decrypt(encryptedData: string): string {
+  if (!encryptedData || typeof encryptedData !== 'string') {
+    throw new Error('Cannot decrypt empty or invalid data');
   }
 
-  return result;
+  const parts = encryptedData.split(':');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted data format');
+  }
+
+  const [ivBase64, authTagBase64, encrypted] = parts;
+  
+  const iv = Buffer.from(ivBase64, 'base64');
+  const authTag = Buffer.from(authTagBase64, 'base64');
+
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(authTag);
+
+  let decrypted = decipher.update(encrypted, 'base64', 'utf8');
+  decrypted += decipher.final('utf8');
+
+  return decrypted;
+}
+
+/**
+ * Encrypt a credential (password, API key, etc.) - legacy alias
+ * Returns: iv:authTag:encrypted (all base64 encoded)
+ */
+export function encryptCredential(plaintext: string): string {
+  return encrypt(plaintext);
+}
+
+/**
+ * Decrypt a credential - legacy alias
+ */
+export async function decryptCredential(encryptedData: string): Promise<string> {
+  return decrypt(encryptedData);
 }
 
 /**
@@ -53,60 +83,6 @@ export async function testDecryption(encryptedData: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * Decrypt a credential
- * Input format: iv:authTag:encrypted (all base64 encoded)
- */
-export function decryptCredential(encryptedData: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    try {
-      // Validate input format
-      if (!encryptedData || typeof encryptedData !== 'string') {
-        throw new Error('Encrypted data is empty or invalid');
-      }
-
-      const parts = encryptedData.split(':');
-      if (parts.length !== 3) {
-        throw new Error(`Invalid encrypted data format. Expected 3 parts (iv:authTag:encrypted), got ${parts.length}`);
-      }
-
-      const [ivBase64, authTagBase64, encrypted] = parts;
-
-      // Validate base64 encoding
-      if (!ivBase64 || !authTagBase64 || !encrypted) {
-        throw new Error('One or more parts of encrypted data are empty');
-      }
-
-      const iv = Buffer.from(ivBase64, 'base64');
-      const authTag = Buffer.from(authTagBase64, 'base64');
-
-      // Validate buffer lengths
-      if (iv.length !== IV_LENGTH) {
-        throw new Error(`Invalid IV length. Expected ${IV_LENGTH}, got ${iv.length}`);
-      }
-
-      const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-      decipher.setAuthTag(authTag);
-
-      let decrypted = decipher.update(encrypted, 'base64', 'utf8');
-      decrypted += decipher.final('utf8');
-
-      resolve(decrypted);
-    } catch (error: any) {
-      // Provide detailed error message
-      const errorMessage = error.message || 'Unknown error';
-      console.error('❌ Decryption failed:', errorMessage);
-      console.error('   This usually means:');
-      console.error('   1. The ENCRYPTION_KEY in .env has changed since the credential was encrypted');
-      console.error('   2. The encrypted data is corrupted');
-      console.error('   3. The credential was encrypted with a different key');
-      console.error('');
-      console.error('💡 Solution: Delete the connection and create a new one with the current ENCRYPTION_KEY');
-      reject(new Error(`Failed to decrypt credential: ${errorMessage}`));
-    }
-  });
 }
 
 /**

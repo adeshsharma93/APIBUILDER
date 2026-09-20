@@ -1,5 +1,6 @@
-import sql, { config, ConnectionPool } from 'mssql';
+import mssql, { config, ConnectionPool } from 'mssql';
 import dotenv from 'dotenv';
+import { decrypt } from '../utils/encryption';
 
 dotenv.config();
 
@@ -27,7 +28,7 @@ let appPool: ConnectionPool | null = null;
 
 export async function getAppDbPool(): Promise<ConnectionPool> {
   if (!appPool) {
-    appPool = await new sql.ConnectionPool(appDbConfig).connect();
+    appPool = await mssql.connect(appDbConfig);
     console.log('✅ Application database connected');
   }
   return appPool;
@@ -36,6 +37,18 @@ export async function getAppDbPool(): Promise<ConnectionPool> {
 // Dynamic connection pools for user databases
 const userDbPools: Map<string, ConnectionPool> = new Map();
 
+export interface UserConnection {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  database_name: string;
+  username: string;
+  encrypted_password: string;
+  ssl_enabled: boolean;
+  type: 'mysql' | 'sqlserver';
+}
+
 export async function getUserDbPool(connectionId: string): Promise<ConnectionPool> {
   if (userDbPools.has(connectionId)) {
     return userDbPools.get(connectionId)!;
@@ -43,20 +56,19 @@ export async function getUserDbPool(connectionId: string): Promise<ConnectionPoo
 
   const pool = await getAppDbPool();
   const result = await pool.request()
-    .input('id', connectionId)
-    .query('SELECT * FROM database_connections WHERE id = @id');
+    .input('id', mssql.NVarChar, connectionId)
+    .query('SELECT * FROM [dbo].[connections] WHERE id = @id');
 
   if (result.recordset.length === 0) {
     throw new Error('Database connection not found');
   }
 
-  const conn = result.recordset[0];
-  
-  // Decrypt credentials
-  const { decryptCredential } = await import('../utils/encryption');
-  const password = await decryptCredential(conn.encrypted_password);
+  const conn: UserConnection = result.recordset[0];
 
-  const userPool = await new sql.ConnectionPool({
+  // Decrypt credentials
+  const password = decrypt(conn.encrypted_password);
+
+  const userPool = await mssql.connect({
     server: conn.host,
     database: conn.database_name,
     user: conn.username,
@@ -72,11 +84,11 @@ export async function getUserDbPool(connectionId: string): Promise<ConnectionPoo
       min: 0,
       idleTimeoutMillis: 30000,
     },
-  }).connect();
+  });
 
   userDbPools.set(connectionId, userPool);
   console.log(`✅ User database connected: ${conn.name}`);
-  
+
   return userPool;
 }
 
@@ -89,7 +101,7 @@ export async function testConnection(config: {
   ssl: boolean;
 }): Promise<boolean> {
   try {
-    const pool = await new sql.ConnectionPool({
+    const pool = await mssql.connect({
       server: config.host,
       database: config.database,
       user: config.username,
@@ -101,7 +113,7 @@ export async function testConnection(config: {
         enableArithAbort: true,
         connectTimeout: 5000,
       },
-    }).connect();
+    });
 
     await pool.request().query('SELECT 1');
     await pool.close();

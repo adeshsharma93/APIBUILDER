@@ -1,3 +1,4 @@
+import mssql from 'mssql';
 import { getMysqlPool, getUserMysqlPool, testMysqlConnection } from '../config/mysqlDatabase';
 import { getAppDbPool, getUserDbPool, testConnection as testSqlServerConnection } from '../config/database';
 import { encryptCredential, decryptCredential } from '../utils/encryption';
@@ -66,17 +67,17 @@ export class DatabaseConnectionService {
       // SQL Server
       const pool = await getAppDbPool();
       await pool.request()
-        .input('id', id)
-        .input('project_id', input.project_id)
-        .input('name', input.name)
-        .input('type', input.type)
-        .input('host', input.host)
-        .input('port', input.port)
-        .input('database_name', input.database_name)
-        .input('username', input.username)
-        .input('encrypted_password', encrypted_password)
-        .input('ssl_enabled', input.ssl_enabled)
-        .input('connection_timeout', input.connection_timeout)
+        .input('id', mssql.NVarChar, id)
+        .input('project_id', mssql.NVarChar, input.project_id)
+        .input('name', mssql.NVarChar, input.name)
+        .input('type', mssql.NVarChar, input.type)
+        .input('host', mssql.NVarChar, input.host)
+         .input('port', mssql.Int, input.port)
+        .input('database_name', mssql.NVarChar, input.database_name)
+        .input('username', mssql.NVarChar, input.username)
+        .input('encrypted_password', mssql.NVarChar, encrypted_password)
+         .input('ssl_enabled', mssql.Bit, input.ssl_enabled)
+         .input('connection_timeout', mssql.Int, input.connection_timeout)
         .query(`
           INSERT INTO database_connections 
           (id, project_id, name, type, host, port, database_name, username, encrypted_password, ssl_enabled, connection_timeout)
@@ -116,7 +117,7 @@ export class DatabaseConnectionService {
     } else {
       const pool = await getAppDbPool();
       const result = await pool.request()
-        .input('project_id', projectId)
+        .input('project_id', mssql.NVarChar, projectId)
         .query('SELECT * FROM database_connections WHERE project_id = @project_id ORDER BY created_at DESC');
       return result.recordset;
     }
@@ -137,7 +138,7 @@ export class DatabaseConnectionService {
     } else {
       const pool = await getAppDbPool();
       const result = await pool.request()
-        .input('id', id)
+        .input('id', mssql.NVarChar, id)
         .query('SELECT * FROM database_connections WHERE id = @id');
       return result.recordset.length > 0 ? result.recordset[0] : null;
     }
@@ -191,9 +192,9 @@ export class DatabaseConnectionService {
     } else {
       const pool = await getAppDbPool();
       await pool.request()
-        .input('id', id)
-        .input('status', status)
-        .input('last_tested_at', now)
+        .input('id', mssql.NVarChar, id)
+         .input('status', mssql.NVarChar, status)
+         .input('last_tested_at', mssql.DateTime, now)
         .query('UPDATE database_connections SET status = @status, last_tested_at = @last_tested_at, updated_at = CURRENT_TIMESTAMP WHERE id = @id');
     }
 
@@ -214,7 +215,7 @@ export class DatabaseConnectionService {
     } else {
       const pool = await getAppDbPool();
       await pool.request()
-        .input('id', id)
+        .input('id', mssql.NVarChar, id)
         .query('DELETE FROM database_connections WHERE id = @id');
     }
   }

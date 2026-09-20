@@ -1,3 +1,4 @@
+import mssql from 'mssql';
 import { getAppDbPool } from '../config/database';
 import { generateApiKey, hashApiKey, verifyApiKey } from '../utils/encryption';
 import { v4 as uuidv4 } from 'uuid';
@@ -46,14 +47,14 @@ export class ApiKeyService {
     const key_prefix = rawKey.substring(0, 14);
 
     const result = await pool.request()
-      .input('id', id)
-      .input('project_id', input.project_id)
-      .input('name', input.name)
-      .input('key_hash', key_hash)
-      .input('key_prefix', key_prefix)
-      .input('allowed_apis', input.allowed_apis || [])
-      .input('expires_at', input.expires_at || null)
-      .input('created_by', input.created_by)
+      .input('id', mssql.NVarChar, id)
+      .input('project_id', mssql.NVarChar, input.project_id)
+      .input('name', mssql.NVarChar, input.name)
+      .input('key_hash', mssql.NVarChar, key_hash)
+      .input('key_prefix', mssql.NVarChar, key_prefix)
+      .input('allowed_apis', mssql.NVarChar, input.allowed_apis || [])
+      .input('expires_at', mssql.NVarChar, input.expires_at || null)
+      .input('created_by', mssql.NVarChar, input.created_by)
       .query(`
         INSERT INTO api_keys (
           id, project_id, name, key_hash, key_prefix, allowed_apis, expires_at, created_by
@@ -75,7 +76,7 @@ export class ApiKeyService {
   async getApiKeys(projectId: string): Promise<ApiKey[]> {
     const pool = await getAppDbPool();
     const result = await pool.request()
-      .input('project_id', projectId)
+      .input('project_id', mssql.NVarChar, projectId)
       .query('SELECT * FROM api_keys WHERE project_id = @project_id ORDER BY created_at DESC');
 
     return result.recordset.map(this.formatApiKey);
@@ -87,7 +88,7 @@ export class ApiKeyService {
   async getApiKey(id: string): Promise<ApiKey | null> {
     const pool = await getAppDbPool();
     const result = await pool.request()
-      .input('id', id)
+      .input('id', mssql.NVarChar, id)
       .query('SELECT * FROM api_keys WHERE id = @id');
 
     if (result.recordset.length === 0) {
@@ -107,7 +108,7 @@ export class ApiKeyService {
     const prefix = rawKey.substring(0, 14);
 
     const result = await pool.request()
-      .input('key_prefix', prefix)
+      .input('key_prefix', mssql.NVarChar, prefix)
       .query('SELECT * FROM api_keys WHERE key_prefix = @key_prefix AND is_active = true');
 
     if (result.recordset.length === 0) {
@@ -128,7 +129,7 @@ export class ApiKeyService {
 
         // Update last used
         await pool.request()
-          .input('id', apiKey.id)
+          .input('id', mssql.NVarChar, apiKey.id)
           .query(`
             UPDATE api_keys 
             SET last_used_at = CURRENT_TIMESTAMP,
@@ -166,7 +167,7 @@ export class ApiKeyService {
   async revokeApiKey(id: string): Promise<void> {
     const pool = await getAppDbPool();
     await pool.request()
-      .input('id', id)
+      .input('id', mssql.NVarChar, id)
       .query('UPDATE api_keys SET is_active = false WHERE id = @id');
   }
 
@@ -176,7 +177,7 @@ export class ApiKeyService {
   async deleteApiKey(id: string): Promise<void> {
     const pool = await getAppDbPool();
     await pool.request()
-      .input('id', id)
+      .input('id', mssql.NVarChar, id)
       .query('DELETE FROM api_keys WHERE id = @id');
   }
 
