@@ -91,7 +91,7 @@ export const ApiDetail: React.FC = () => {
         method: api.method,
         headers: {
           'Content-Type': 'application/json',
-          ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+          ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
         },
       });
       

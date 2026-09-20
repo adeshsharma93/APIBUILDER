@@ -15,31 +15,22 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
-.venv/
-.ENV
-.python-version
+*.egg-info/
+.eggs/
 
 # Logs
 *.log
 
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Editor
+# Editor/IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *.tmp
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Coverage
 coverage/
@@ -51,6 +42,9 @@ htmlcov/
 
 # Pytest
 .pytest_cache/
+
+# Gradle
+.gradle/
 
 # Compressed files
 *.zip
@@ -71,4 +65,8 @@ htmlcov/
 *.Z
 *.lz
 *.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```

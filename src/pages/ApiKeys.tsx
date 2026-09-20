@@ -36,6 +36,7 @@ export const ApiKeys: React.FC = () => {
       id: `key-${Date.now()}`,
       name: newKeyName,
       keyPrefix: `sk_live_${rawKey.substring(7, 11)}`,
+      key: rawKey, // Store full key for testing
       createdAt: new Date().toISOString(),
       expiresAt: newKeyExpiry ? new Date(newKeyExpiry).toISOString() : null,
       lastUsed: null,
