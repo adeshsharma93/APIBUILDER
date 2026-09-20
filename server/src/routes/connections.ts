@@ -1,24 +1,27 @@
 import { Router, Request, Response } from 'express';
-import { databaseConnectionService } from '../services/databaseConnectionService';
-import { authenticateApiKey } from '../middleware/auth';
+import connectionService from '../services/connectionService';
+import { authenticateToken } from '../middleware/auth';
 
 const router = Router();
 
+// Apply authentication to all routes
+router.use(authenticateToken);
+
 /**
  * GET /api/connections
- * Get all database connections for a project
+ * Get all database connections for the authenticated user
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const projectId = req.query.project_id as string;
-    if (!projectId) {
-      return res.status(400).json({
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
         success: false,
-        error: { code: 'INVALID_PARAMETER', message: 'project_id is required' },
+        error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
       });
     }
 
-    const connections = await databaseConnectionService.getConnections(projectId);
+    const connections = await connectionService.getAllConnections(userId);
     res.json({ success: true, data: connections });
   } catch (error: any) {
     console.error('Get connections error:', error);
@@ -35,121 +38,36 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
-    // Accept both field name formats for flexibility
-    const { 
-      project_id, 
-      projectName,  // Project name from frontend
-      name, 
-      type, 
-      host, 
-      port, 
-      database_name,
-      database,  // Alternative field name
-      username, 
-      password, 
-      ssl_enabled,
-      ssl,  // Alternative field name
-      connection_timeout,
-      timeout  // Alternative field name
-    } = req.body;
-
-    const finalDatabaseName = database_name || database;
-    const finalSsl = ssl_enabled !== undefined ? ssl_enabled : (ssl !== undefined ? ssl : true);
-    const finalTimeout = connection_timeout || timeout || 30;
-
-    if (!name || !host || !finalDatabaseName || !username || !password) {
-      return res.status(400).json({
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
         success: false,
-        error: { code: 'INVALID_PARAMETER', message: 'Missing required fields: name, host, database, username, password' },
+        error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
       });
     }
 
-    // Get or create project
-    let finalProjectId = project_id;
-    
-    // First, ensure default system user exists
-    const { getMysqlPool } = await import('../config/mysqlDatabase');
-    const pool = await getMysqlPool();
-    const { v4: uuidv4 } = await import('uuid');
-    const { hashPassword } = await import('../utils/encryption');
-    
-    const defaultUserId = '00000000-0000-0000-0000-000000000000';
-    
-    // Check if default user exists
-    const [existingUsers] = await pool.execute(
-      'SELECT id FROM users WHERE id = ?',
-      [defaultUserId]
-    );
-    
-    if ((existingUsers as any[]).length === 0) {
-      // Create default system user
-      const defaultPasswordHash = await hashPassword('system-default-password');
-      await pool.execute(
-        'INSERT INTO users (id, email, password_hash, name, role, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())',
-        [defaultUserId, 'system@sqlapi.dev', defaultPasswordHash, 'System User', 'admin', true]
-      );
-      console.log(`✅ Created default system user: ${defaultUserId}`);
-    }
-    
-    if (!finalProjectId && projectName) {
-      // Try to find existing project by name
-      const [existingProjects] = await pool.execute(
-        'SELECT id FROM projects WHERE name = ?',
-        [projectName]
-      );
-      
-      if ((existingProjects as any[]).length > 0) {
-        // Use existing project
-        finalProjectId = (existingProjects as any[])[0].id;
-        console.log(`✅ Using existing project: ${projectName} (${finalProjectId})`);
-      } else {
-        // Create new project
-        finalProjectId = uuidv4();
-        
-        await pool.execute(
-          'INSERT INTO projects (id, name, owner_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
-          [finalProjectId, projectName, defaultUserId]
-        );
-        
-        console.log(`✅ Created new project: ${projectName} (${finalProjectId})`);
-      }
-    } else if (!finalProjectId) {
-      // Use default project if no projectName provided
-      finalProjectId = 'default-project';
-      
-      // Ensure default project exists
-      try {
-        const [existingProjects] = await pool.execute(
-          'SELECT id FROM projects WHERE id = ?',
-          [finalProjectId]
-        );
-        
-        if ((existingProjects as any[]).length === 0) {
-          await pool.execute(
-            'INSERT INTO projects (id, name, owner_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
-            [finalProjectId, 'Default Project', defaultUserId]
-          );
-          console.log(`✅ Created default project`);
-        }
-      } catch (err) {
-        console.log('Note: Could not create default project (may already exist)');
-      }
+    const { name, type, host, port, database_name, username, password, is_default } = req.body;
+
+    if (!name || !type || !username || !password) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_PARAMETER', message: 'Missing required fields: name, type, username, password' },
+      });
     }
 
-    const connection = await databaseConnectionService.createConnection({
-      project_id: finalProjectId,
+    const connection = await connectionService.createConnection({
+      user_id: userId,
       name,
-      type: type || 'mysql',
-      host,
+      type: type || 'sqlserver',
+      host: host || 'localhost',
       port: port || (type === 'mysql' ? 3306 : 1433),
-      database_name: finalDatabaseName,
+      database_name: database_name || '',
       username,
-      password,
-      ssl_enabled: finalSsl,
-      connection_timeout: finalTimeout,
+      password_encrypted: password,
+      is_default: is_default || false,
     });
 
-    res.status(201).json({ success: true, connection });
+    res.status(201).json({ success: true, data: connection });
   } catch (error: any) {
     console.error('Create connection error:', error);
     res.status(500).json({
@@ -165,7 +83,15 @@ router.post('/', async (req: Request, res: Response) => {
  */
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const connection = await databaseConnectionService.getConnection(req.params.id);
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
+      });
+    }
+
+    const connection = await connectionService.getConnectionById(parseInt(req.params.id), userId);
     if (!connection) {
       return res.status(404).json({
         success: false,
@@ -188,14 +114,38 @@ router.get('/:id', async (req: Request, res: Response) => {
  */
 router.post('/:id/test', async (req: Request, res: Response) => {
   try {
-    const { dbType } = req.query;
-    const type = (dbType as string) || 'mysql';
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
+      });
+    }
+
+    const connection = await connectionService.getConnectionById(parseInt(req.params.id), userId);
+    if (!connection) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Connection not found' },
+      });
+    }
+
+    // Import testConnection from database config
+    const { testConnection } = await import('../config/database');
     
-    const result = await databaseConnectionService.testConnection(req.params.id, type as 'mysql' | 'sqlserver');
-    if (!result.success) {
+    const result = await testConnection({
+      host: connection.host || 'localhost',
+      port: connection.port || 1433,
+      database: connection.database_name || 'master',
+      username: connection.username || '',
+      password: connection.password_encrypted,
+      ssl: false,
+    });
+
+    if (!result) {
       return res.status(400).json({
         success: false,
-        error: { code: 'CONNECTION_FAILED', message: result.error || 'Connection test failed' },
+        error: { code: 'CONNECTION_FAILED', message: 'Connection test failed' },
       });
     }
     res.json({ success: true, message: 'Connection test successful' });
@@ -209,12 +159,60 @@ router.post('/:id/test', async (req: Request, res: Response) => {
 });
 
 /**
+ * PUT /api/connections/:id
+ * Update a connection
+ */
+router.put('/:id', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
+      });
+    }
+
+    const updates = req.body;
+    const connection = await connectionService.updateConnection(parseInt(req.params.id), userId, updates);
+    
+    if (!connection) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Connection not found' },
+      });
+    }
+    
+    res.json({ success: true, data: connection });
+  } catch (error: any) {
+    console.error('Update connection error:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to update connection' },
+    });
+  }
+});
+
+/**
  * DELETE /api/connections/:id
  * Delete a connection
  */
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    await databaseConnectionService.deleteConnection(req.params.id);
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
+      });
+    }
+
+    const deleted = await connectionService.deleteConnection(parseInt(req.params.id), userId);
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Connection not found' },
+      });
+    }
     res.json({ success: true, message: 'Connection deleted' });
   } catch (error: any) {
     console.error('Delete connection error:', error);

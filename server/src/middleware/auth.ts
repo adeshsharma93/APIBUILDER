@@ -181,3 +181,33 @@ export async function auditLog(req: Request, res: Response, next: NextFunction) 
 
   next();
 }
+
+/**
+ * Middleware to authenticate user token (JWT)
+ */
+export async function authenticateToken(req: Request, res: Response, next: NextFunction) {
+  // For now, allow all requests - implement proper JWT auth later
+  // This is a placeholder for user authentication
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // For development, allow requests without token
+    // In production, this should return 401
+    (req as any).user = { id: 1 }; // Default user for development
+    return next();
+  }
+  
+  const token = authHeader.substring(7);
+  
+  try {
+    // TODO: Implement proper JWT verification
+    // For now, just extract user ID from token (in real app, verify JWT signature)
+    (req as any).user = { id: 1, token };
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'Invalid token' },
+    });
+  }
+}

@@ -1,3 +1,4 @@
+import mssql from 'mssql';
 import { getUserMysqlPool, getMysqlPool } from '../config/mysqlDatabase';
 import { getUserDbPool, getAppDbPool } from '../config/database';
 import { validateSql, validateParameterType, convertParameterValue } from '../utils/sqlValidator';
@@ -285,7 +286,7 @@ export class ApiExecutionService {
 
     // Load API definition
     const apiResult = await appPool.request()
-      .input('api_id', apiId)
+      .input('api_id', mssql.NVarChar, apiId)
       .query(`
         SELECT a.*, q.sql_text, q.parameters as query_parameters, q.connection_id, dc.type as db_type
         FROM apis a
@@ -393,16 +394,16 @@ export class ApiExecutionService {
     const pool = await getAppDbPool();
 
     await pool.request()
-      .input('api_id', apiId)
-      .input('api_key_id', apiKeyId)
-      .input('method', method)
-      .input('endpoint', endpoint)
-      .input('status_code', statusCode)
-      .input('response_time', responseTime)
-      .input('parameters', JSON.stringify(parameters))
-      .input('ip_address', ipAddress)
-      .input('user_agent', userAgent)
-      .input('error_message', errorMessage)
+      .input('api_id', mssql.NVarChar, apiId)
+      .input('api_key_id', mssql.NVarChar, apiKeyId)
+      .input('method', mssql.NVarChar, method)
+      .input('endpoint', mssql.NVarChar, endpoint)
+      .input('status_code', mssql.NVarChar, statusCode)
+      .input('response_time', mssql.NVarChar, responseTime)
+      .input('parameters', mssql.NVarChar, JSON.stringify(parameters))
+      .input('ip_address', mssql.NVarChar, ipAddress)
+      .input('user_agent', mssql.NVarChar, userAgent)
+      .input('error_message', mssql.NVarChar, errorMessage)
       .query(`
         INSERT INTO api_request_logs (
           api_id, api_key_id, method, endpoint, status_code, response_time,
@@ -416,7 +417,7 @@ export class ApiExecutionService {
     // Update API stats
     if (statusCode >= 400) {
       await pool.request()
-        .input('api_id', apiId)
+        .input('api_id', mssql.NVarChar, apiId)
         .query(`
           UPDATE apis 
           SET error_count = error_count + 1,
@@ -426,8 +427,8 @@ export class ApiExecutionService {
         `);
     } else {
       await pool.request()
-        .input('api_id', apiId)
-        .input('response_time', responseTime)
+        .input('api_id', mssql.NVarChar, apiId)
+        .input('response_time', mssql.NVarChar, responseTime)
         .query(`
           UPDATE apis 
           SET request_count = request_count + 1,

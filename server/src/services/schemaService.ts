@@ -1,3 +1,4 @@
+import mssql from 'mssql';
 import { getMysqlPool, getUserMysqlPool } from '../config/mysqlDatabase';
 import { getAppDbPool, getUserDbPool } from '../config/database';
 
@@ -213,8 +214,8 @@ export class SchemaService {
     for (const table of tableList) {
       // Get columns
       const columnsResult = await pool.request()
-        .input('tableName', table.name)
-        .input('schemaName', table.schema)
+        .input('tableName', mssql.NVarChar, table.name)
+        .input('schemaName', mssql.NVarChar, table.schema)
         .query(`
           SELECT 
             c.name as name,
@@ -235,8 +236,8 @@ export class SchemaService {
 
       // Get primary keys
       const pkResult = await pool.request()
-        .input('tableName', table.name)
-        .input('schemaName', table.schema)
+        .input('tableName', mssql.NVarChar, table.name)
+        .input('schemaName', mssql.NVarChar, table.schema)
         .query(`
           SELECT c.name as columnName
           FROM sys.indexes i
@@ -251,8 +252,8 @@ export class SchemaService {
 
       // Get foreign keys
       const fkResult = await pool.request()
-        .input('tableName', table.name)
-        .input('schemaName', table.schema)
+        .input('tableName', mssql.NVarChar, table.name)
+        .input('schemaName', mssql.NVarChar, table.schema)
         .query(`
           SELECT 
             c.name as columnName,
@@ -270,8 +271,8 @@ export class SchemaService {
 
       // Get indexes
       const indexResult = await pool.request()
-        .input('tableName', table.name)
-        .input('schemaName', table.schema)
+        .input('tableName', mssql.NVarChar, table.name)
+        .input('schemaName', mssql.NVarChar, table.schema)
         .query(`
           SELECT 
             i.name as indexName,
