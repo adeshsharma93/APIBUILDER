@@ -34,25 +34,14 @@ class DatabaseConnectionService {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.project_id, input.name, input.type, input.host, input.port, input.database_name, input.username, encrypted_password, input.ssl_enabled, input.connection_timeout, mysqlNow, mysqlNow]);
         }
         else {
-            // SQL Server
+            // SQL Server - use MySQL syntax since app DB is MySQL
             const pool = await (0, database_1.getAppDbPool)();
-            await pool.request()
-                .input('id', mssql_1.default.NVarChar, id)
-                .input('project_id', mssql_1.default.NVarChar, input.project_id)
-                .input('name', mssql_1.default.NVarChar, input.name)
-                .input('type', mssql_1.default.NVarChar, input.type)
-                .input('host', mssql_1.default.NVarChar, input.host)
-                .input('port', mssql_1.default.Int, input.port)
-                .input('database_name', mssql_1.default.NVarChar, input.database_name)
-                .input('username', mssql_1.default.NVarChar, input.username)
-                .input('encrypted_password', mssql_1.default.NVarChar, encrypted_password)
-                .input('ssl_enabled', mssql_1.default.Bit, input.ssl_enabled)
-                .input('connection_timeout', mssql_1.default.Int, input.connection_timeout)
-                .query(`
-          INSERT INTO database_connections 
-          (id, project_id, name, type, host, port, database_name, username, encrypted_password, ssl_enabled, connection_timeout)
-          VALUES (@id, @project_id, @name, @type, @host, @port, @database_name, @username, @encrypted_password, @ssl_enabled, @connection_timeout)
-        `);
+            const sqlNow = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            await pool.query(`
+        INSERT INTO database_connections 
+        (id, project_id, name, type, host, port, database_name, username, encrypted_password, ssl_enabled, connection_timeout, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, input.project_id, input.name, input.type, input.host, input.port, input.database_name, input.username, encrypted_password, input.ssl_enabled, input.connection_timeout, sqlNow, sqlNow]);
         }
         return {
             id,
@@ -82,10 +71,8 @@ class DatabaseConnectionService {
         }
         else {
             const pool = await (0, database_1.getAppDbPool)();
-            const result = await pool.request()
-                .input('project_id', mssql_1.default.NVarChar, projectId)
-                .query('SELECT * FROM database_connections WHERE project_id = @project_id ORDER BY created_at DESC');
-            return result.recordset;
+            const [rows] = await pool.query('SELECT * FROM database_connections WHERE project_id = ? ORDER BY created_at DESC', [projectId]);
+            return rows;
         }
     }
     /**
@@ -100,10 +87,9 @@ class DatabaseConnectionService {
         }
         else {
             const pool = await (0, database_1.getAppDbPool)();
-            const result = await pool.request()
-                .input('id', mssql_1.default.NVarChar, id)
-                .query('SELECT * FROM database_connections WHERE id = @id');
-            return result.recordset.length > 0 ? result.recordset[0] : null;
+            const [rows] = await pool.query('SELECT * FROM database_connections WHERE id = ?', [id]);
+            const result = rows;
+            return result.length > 0 ? result[0] : null;
         }
     }
     /**

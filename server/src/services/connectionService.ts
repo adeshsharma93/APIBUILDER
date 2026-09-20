@@ -1,4 +1,4 @@
-import mssql, { ConnectionPool } from 'mssql';
+import mysql from 'mysql2/promise';
 import { encrypt, decrypt } from '../utils/encryption';
 
 export interface Connection {
@@ -11,30 +11,29 @@ export interface Connection {
   database_name?: string;
   username?: string;
   password_encrypted: string;
+  ssl_enabled?: boolean;
   is_default?: boolean;
   created_at?: Date;
   updated_at?: Date;
 }
 
 export class ConnectionService {
-  private pool: ConnectionPool | null = null;
-
+  private pool: mysql.Pool | null = null;
+  
   constructor() {}
 
-  private async getPool(): Promise<ConnectionPool> {
+  private async getPool(): Promise<mysql.Pool> {
     if (!this.pool) {
-      const config = {
-        server: process.env.APP_DB_SERVER || 'localhost',
-        database: process.env.APP_DB_NAME || 'sqlapibuilder',
-        user: process.env.APP_DB_USER || 'sa',
-        password: process.env.APP_DB_PASSWORD || '',
-        options: {
-          encrypt: process.env.APP_DB_ENCRYPT === 'true',
-          trustServerCertificate: true
-        }
-      };
-      
-      this.pool = await mssql.connect(config);
+      this.pool = mysql.createPool({
+        host: process.env.MYSQL_DB_HOST || 'localhost',
+        port: parseInt(process.env.MYSQL_DB_PORT || '3306'),
+        database: process.env.MYSQL_DB_NAME || 'SQLAPIBuilder',
+        user: process.env.MYSQL_DB_USER || 'root',
+        password: process.env.MYSQL_DB_PASSWORD || '',
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+      });
     }
     return this.pool;
   }
@@ -43,39 +42,40 @@ export class ConnectionService {
     const pool = await this.getPool();
     const encryptedPassword = encrypt(connection.password_encrypted);
     
-    const result = await pool.request()
-      .input('user_id', mssql.Int, connection.user_id)
-      .input('name', mssql.NVarChar, connection.name)
-      .input('type', mssql.NVarChar, connection.type)
-      .input('host', mssql.NVarChar, connection.host || null)
-      .input('port', mssql.Int, connection.port || null)
-      .input('database_name', mssql.NVarChar, connection.database_name || null)
-      .input('username', mssql.NVarChar, connection.username || null)
-      .input('password_encrypted', mssql.NVarChar, encryptedPassword)
-      .input('is_default', mssql.Bit, connection.is_default ? 1 : 0)
-      .query(`
-        INSERT INTO [dbo].[connections] 
-        ([user_id], [name], [type], [host], [port], [database_name], [username], [password_encrypted], [is_default])
-        OUTPUT INSERTED.*
-        VALUES (@user_id, @name, @type, @host, @port, @database_name, @username, @password_encrypted, @is_default)
-      `);
+    const [result] = await pool.query(
+      `INSERT INTO connections 
+       (user_id, name, type, host, port, database_name, username, password_encrypted, is_default)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        connection.user_id,
+        connection.name,
+        connection.type,
+        connection.host || null,
+        connection.port || null,
+        connection.database_name || null,
+        connection.username || null,
+        encryptedPassword,
+        connection.is_default ? 1 : 0,
+      ]
+    );
 
-    const created = result.recordset[0];
-    created.password_encrypted = decrypt(created.password_encrypted);
-    return created;
+    const insertId = (result as any).insertId;
+    const created = await this.getConnectionById(insertId, connection.user_id);
+    return created!;
   }
 
   async getConnectionById(id: number, userId: number): Promise<Connection | null> {
     const pool = await this.getPool();
     
-    const result = await pool.request()
-      .input('id', mssql.Int, id)
-      .input('user_id', mssql.Int, userId)
-      .query('SELECT * FROM [dbo].[connections] WHERE id = @id AND user_id = @user_id');
+    const [rows] = await pool.query(
+      'SELECT * FROM connections WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
 
-    if (result.recordset.length === 0) return null;
+    const recordset = rows as any[];
+    if (recordset.length === 0) return null;
     
-    const conn = result.recordset[0];
+    const conn = recordset[0];
     conn.password_encrypted = decrypt(conn.password_encrypted);
     return conn;
   }
@@ -83,11 +83,13 @@ export class ConnectionService {
   async getAllConnections(userId: number): Promise<Connection[]> {
     const pool = await this.getPool();
     
-    const result = await pool.request()
-      .input('user_id', mssql.Int, userId)
-      .query('SELECT * FROM [dbo].[connections] WHERE user_id = @user_id ORDER BY created_at DESC');
+    const [rows] = await pool.query(
+      'SELECT * FROM connections WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
+    );
 
-    return result.recordset.map((conn: any) => {
+    const recordset = rows as any[];
+    return recordset.map((conn: any) => {
       conn.password_encrypted = decrypt(conn.password_encrypted);
       return conn;
     });
@@ -96,66 +98,57 @@ export class ConnectionService {
   async updateConnection(id: number, userId: number, updates: Partial<Connection>): Promise<Connection | null> {
     const pool = await this.getPool();
     
-    let query = 'UPDATE [dbo].[connections] SET ';
     const fields: string[] = [];
+    const values: any[] = [];
     
     if (updates.name !== undefined) {
-      fields.push('[name] = @name');
+      fields.push('name = ?');
+      values.push(updates.name);
     }
     if (updates.host !== undefined) {
-      fields.push('[host] = @host');
+      fields.push('host = ?');
+      values.push(updates.host);
     }
     if (updates.port !== undefined) {
-      fields.push('[port] = @port');
+      fields.push('port = ?');
+      values.push(updates.port);
     }
     if (updates.database_name !== undefined) {
-      fields.push('[database_name] = @database_name');
+      fields.push('database_name = ?');
+      values.push(updates.database_name);
     }
     if (updates.username !== undefined) {
-      fields.push('[username] = @username');
+      fields.push('username = ?');
+      values.push(updates.username);
     }
     if (updates.password_encrypted !== undefined) {
-      fields.push('[password_encrypted] = @password_encrypted');
-      updates.password_encrypted = encrypt(updates.password_encrypted);
+      fields.push('password_encrypted = ?');
+      values.push(encrypt(updates.password_encrypted));
     }
     if (updates.is_default !== undefined) {
-      fields.push('[is_default] = @is_default');
+      fields.push('is_default = ?');
+      values.push(updates.is_default ? 1 : 0);
     }
     
-    fields.push('[updated_at] = GETDATE()');
-    query += fields.join(', ');
-    query += ' OUTPUT INSERTED.* WHERE id = @id AND user_id = @user_id';
+    fields.push('updated_at = NOW()');
+    values.push(id, userId);
 
-    const request = pool.request()
-      .input('id', mssql.Int, id)
-      .input('user_id', mssql.Int, userId);
+    const query = `UPDATE connections SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`;
+    await pool.query(query, values);
 
-    if (updates.name !== undefined) request.input('name', mssql.NVarChar, updates.name);
-    if (updates.host !== undefined) request.input('host', mssql.NVarChar, updates.host);
-    if (updates.port !== undefined) request.input('port', mssql.Int, updates.port);
-    if (updates.database_name !== undefined) request.input('database_name', mssql.NVarChar, updates.database_name);
-    if (updates.username !== undefined) request.input('username', mssql.NVarChar, updates.username);
-    if (updates.password_encrypted !== undefined) request.input('password_encrypted', mssql.NVarChar, updates.password_encrypted);
-    if (updates.is_default !== undefined) request.input('is_default', mssql.Bit, updates.is_default ? 1 : 0);
-
-    const result = await request.query(query);
-
-    if (result.recordset.length === 0) return null;
-    
-    const conn = result.recordset[0];
-    conn.password_encrypted = decrypt(conn.password_encrypted);
-    return conn;
+    const updated = await this.getConnectionById(id, userId);
+    return updated;
   }
 
   async deleteConnection(id: number, userId: number): Promise<boolean> {
     const pool = await this.getPool();
     
-    const result = await pool.request()
-      .input('id', mssql.Int, id)
-      .input('user_id', mssql.Int, userId)
-      .query('DELETE FROM [dbo].[connections] WHERE id = @id AND user_id = @user_id');
+    const [result] = await pool.query(
+      'DELETE FROM connections WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
 
-    return result.rowsAffected[0] > 0;
+    return (result as any).affectedRows > 0;
   }
 }
 

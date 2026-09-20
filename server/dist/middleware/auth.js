@@ -39,6 +39,7 @@ exports.rateLimit = rateLimit;
 exports.auditLog = auditLog;
 exports.authenticateToken = authenticateToken;
 const apiKeyService_1 = require("../services/apiKeyService");
+const apiKeyService = new apiKeyService_1.ApiKeyService();
 /**
  * Middleware to authenticate API requests using API keys
  */
@@ -55,13 +56,13 @@ async function authenticateApiKey(req, res, next) {
     }
     const apiKey = authHeader.substring(7); // Remove 'Bearer '
     try {
-        const result = await apiKeyService_1.apiKeyService.verifyApiKey(apiKey);
+        const result = await apiKeyService.verifyApiKey(apiKey);
         if (!result.valid) {
             return res.status(401).json({
                 success: false,
                 error: {
                     code: 'UNAUTHORIZED',
-                    message: result.error || 'Invalid API key',
+                    message: 'Invalid API key',
                 },
             });
         }
@@ -93,7 +94,7 @@ function checkApiAccess(apiId) {
                 },
             });
         }
-        const hasAccess = await apiKeyService_1.apiKeyService.hasAccessToApi(req.apiKey.id, apiId);
+        const hasAccess = await apiKeyService.hasAccessToApi(req.apiKey.id, apiId);
         if (!hasAccess) {
             return res.status(403).json({
                 success: false,

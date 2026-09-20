@@ -8,91 +8,130 @@ exports.getAppDbPool = getAppDbPool;
 exports.getUserDbPool = getUserDbPool;
 exports.testConnection = testConnection;
 const mssql_1 = __importDefault(require("mssql"));
+const promise_1 = __importDefault(require("mysql2/promise"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const encryption_1 = require("../utils/encryption");
 dotenv_1.default.config();
-// Application database configuration (stores users, APIs, logs, etc.)
+// Application database configuration (stores users, APIs, logs, etc.) - MySQL
 exports.appDbConfig = {
-    server: process.env.APP_DB_SERVER || 'localhost',
-    database: process.env.APP_DB_NAME || 'SQLAPIBuilder',
-    user: process.env.APP_DB_USER || 'sa',
-    password: process.env.APP_DB_PASSWORD || '',
-    port: parseInt(process.env.APP_DB_PORT || '1433'),
-    options: {
-        encrypt: process.env.APP_DB_ENCRYPT === 'true',
-        trustServerCertificate: process.env.APP_DB_TRUST_CERT === 'true',
-        enableArithAbort: true,
-    },
-    pool: {
-        max: 10,
-        min: 0,
-        idleTimeoutMillis: 30000,
-    },
+    host: process.env.MYSQL_DB_HOST || 'localhost',
+    port: parseInt(process.env.MYSQL_DB_PORT || '3306'),
+    database: process.env.MYSQL_DB_NAME || 'SQLAPIBuilder',
+    user: process.env.MYSQL_DB_USER || 'root',
+    password: process.env.MYSQL_DB_PASSWORD || '',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
 };
-// Connection pool for application database
+// Connection pool for application database (MySQL)
 let appPool = null;
 async function getAppDbPool() {
     if (!appPool) {
-        appPool = await mssql_1.default.connect(exports.appDbConfig);
-        console.log('✅ Application database connected');
+        appPool = promise_1.default.createPool(exports.appDbConfig);
+        // Test the connection
+        try {
+            const connection = await appPool.getConnection();
+            await connection.ping();
+            connection.release();
+            console.log('✅ Application database (MySQL) connected');
+        }
+        catch (error) {
+            console.error('Failed to connect to MySQL:', error);
+            throw error;
+        }
     }
     return appPool;
 }
-// Dynamic connection pools for user databases
 const userDbPools = new Map();
 async function getUserDbPool(connectionId) {
     if (userDbPools.has(connectionId)) {
-        return userDbPools.get(connectionId);
+        const cached = userDbPools.get(connectionId);
+        return {
+            type: cached.type,
+            pool: cached.type === 'mysql' ? cached.mysqlPool : cached.mssqlPool,
+            mysqlPool: cached.mysqlPool,
+            mssqlPool: cached.mssqlPool
+        };
     }
     const pool = await getAppDbPool();
-    const result = await pool.request()
-        .input('id', mssql_1.default.NVarChar, connectionId)
-        .query('SELECT * FROM [dbo].[connections] WHERE id = @id');
-    if (result.recordset.length === 0) {
+    const [rows] = await pool.query('SELECT * FROM connections WHERE id = ?', [connectionId]);
+    const recordset = rows;
+    if (recordset.length === 0) {
         throw new Error('Database connection not found');
     }
-    const conn = result.recordset[0];
+    const conn = recordset[0];
     // Decrypt credentials
     const password = (0, encryption_1.decrypt)(conn.encrypted_password);
-    const userPool = await mssql_1.default.connect({
-        server: conn.host,
-        database: conn.database_name,
-        user: conn.username,
-        password: password,
-        port: conn.port,
-        options: {
-            encrypt: conn.ssl_enabled,
-            trustServerCertificate: !conn.ssl_enabled,
-            enableArithAbort: true,
-        },
-        pool: {
-            max: 5,
-            min: 0,
-            idleTimeoutMillis: 30000,
-        },
-    });
-    userDbPools.set(connectionId, userPool);
-    console.log(`✅ User database connected: ${conn.name}`);
-    return userPool;
+    if (conn.type === 'mysql') {
+        const mysqlPool = promise_1.default.createPool({
+            host: conn.host,
+            port: conn.port,
+            database: conn.database_name,
+            user: conn.username,
+            password: password,
+            waitForConnections: true,
+            connectionLimit: 5,
+            queueLimit: 0,
+        });
+        userDbPools.set(connectionId, { type: 'mysql', mysqlPool });
+        console.log(`✅ User MySQL database connected: ${conn.name}`);
+        return { type: 'mysql', pool: mysqlPool };
+    }
+    else {
+        const mssqlPool = await mssql_1.default.connect({
+            server: conn.host,
+            database: conn.database_name,
+            user: conn.username,
+            password: password,
+            port: conn.port,
+            options: {
+                encrypt: conn.ssl_enabled,
+                trustServerCertificate: !conn.ssl_enabled,
+                enableArithAbort: true,
+            },
+            pool: {
+                max: 5,
+                min: 0,
+                idleTimeoutMillis: 30000,
+            },
+        });
+        userDbPools.set(connectionId, { type: 'sqlserver', mssqlPool });
+        console.log(`✅ User SQL Server database connected: ${conn.name}`);
+        return { type: 'sqlserver', pool: mssqlPool };
+    }
 }
 async function testConnection(config) {
     try {
-        const pool = await mssql_1.default.connect({
-            server: config.host,
-            database: config.database,
-            user: config.username,
-            password: config.password,
-            port: config.port,
-            options: {
-                encrypt: config.ssl,
-                trustServerCertificate: !config.ssl,
-                enableArithAbort: true,
-                connectTimeout: 5000,
-            },
-        });
-        await pool.request().query('SELECT 1');
-        await pool.close();
-        return true;
+        if (config.type === 'mysql') {
+            const connection = await promise_1.default.createConnection({
+                host: config.host,
+                port: config.port,
+                database: config.database,
+                user: config.username,
+                password: config.password,
+            });
+            await connection.ping();
+            await connection.end();
+            return true;
+        }
+        else {
+            const pool = await mssql_1.default.connect({
+                server: config.host,
+                database: config.database,
+                user: config.username,
+                password: config.password,
+                port: config.port,
+                options: {
+                    encrypt: config.ssl,
+                    trustServerCertificate: !config.ssl,
+                    enableArithAbort: true,
+                    connectTimeout: 5000,
+                },
+            });
+            await pool.request().query('SELECT 1');
+            await pool.close();
+            return true;
+        }
     }
     catch (error) {
         console.error('Connection test failed:', error);

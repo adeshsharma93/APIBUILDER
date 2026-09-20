@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import * as mssql from 'mssql';
-import { apiKeyService } from '../services/apiKeyService';
+import { ApiKeyService } from '../services/apiKeyService';
+
+const apiKeyService = new ApiKeyService();
 
 // Extend Express Request to include authenticated user/api key
 declare global {
@@ -38,12 +40,12 @@ export async function authenticateApiKey(req: Request, res: Response, next: Next
         success: false,
         error: {
           code: 'UNAUTHORIZED',
-          message: result.error || 'Invalid API key',
+          message: 'Invalid API key',
         },
       });
     }
 
-    req.apiKey = result.apiKey;
+    req.apiKey = result.apiKey!;
     next();
   } catch (error) {
     console.error('Authentication error:', error);

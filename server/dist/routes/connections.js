@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const connectionService_1 = __importDefault(require("../services/connectionService"));
 const auth_1 = require("../middleware/auth");
+const encryption_1 = require("../utils/encryption");
 const router = (0, express_1.Router)();
 // Apply authentication to all routes
 router.use(auth_1.authenticateToken);
@@ -161,11 +162,12 @@ router.post('/:id/test', async (req, res) => {
         const { testConnection } = await Promise.resolve().then(() => __importStar(require('../config/database')));
         const result = await testConnection({
             host: connection.host || 'localhost',
-            port: connection.port || 1433,
-            database: connection.database_name || 'master',
+            port: connection.port || (connection.type === 'mysql' ? 3306 : 1433),
+            database: connection.database_name || '',
             username: connection.username || '',
-            password: connection.password_encrypted,
-            ssl: false,
+            password: (0, encryption_1.decrypt)(connection.password_encrypted),
+            ssl: connection.ssl_enabled || false,
+            type: connection.type,
         });
         if (!result) {
             return res.status(400).json({
