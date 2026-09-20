@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import * as mssql from 'mssql';
 import { apiKeyService } from '../services/apiKeyService';
 
 // Extend Express Request to include authenticated user/api key
@@ -151,26 +152,30 @@ export async function auditLog(req: Request, res: Response, next: NextFunction) 
     // Log after response is sent
     setImmediate(async () => {
       try {
-        const { getAppDbPool } = await import('../config/database');
-        const pool = await getAppDbPool();
-
-        await pool.request()
-          .input('user_id', req.userId || null)
-          .input('action', `${req.method} ${req.path}`)
-          .input('entity_type', 'api_request')
-          .input('entity_id', null)
-          .input('details', JSON.stringify({
+        const { getMysqlPool } = await import('../config/mysqlDatabase');
+        const pool = await getMysqlPool();
+        
+        // Log to MySQL database
+        const values: (string | number | null)[] = [
+          req.userId || null,
+          `${req.method} ${req.path}`,
+          'api_request',
+          null,
+          JSON.stringify({
             endpoint: req.path,
             method: req.method,
             status: res.statusCode,
             ip: req.ip,
-          }))
-          .input('ip_address', req.ip)
-          .input('user_agent', req.get('user-agent'))
-          .query(`
-            INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address, user_agent)
-            VALUES (@user_id, @action, @entity_type, @entity_id, @details, @ip_address, @user_agent)
-          `);
+          }),
+          req.ip || '',
+          req.get('user-agent') || ''
+        ];
+        
+        await pool.execute(
+          `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address, user_agent, created_at) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+          values
+        );
       } catch (error) {
         console.error('Audit log error:', error);
       }

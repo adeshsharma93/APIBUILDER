@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { apiExecutionService } from '../services/apiExecutionService';
-import { apiKeyService } from '../services/apiKeyService';
-import { getAppDbPool } from '../config/database';
-import { authenticateApiKey, rateLimit, checkApiAccess } from '../middleware/auth';
+import { getMysqlPool } from '../config/mysqlDatabase';
+import { authenticateApiKey } from '../middleware/auth';
 
 const router = Router();
 
@@ -24,23 +23,22 @@ router.get('/execute/:apiId', authenticateApiKey, async (req: Request, res: Resp
     }
 
     // Get API details for rate limiting
-    const pool = await getAppDbPool();
-    const apiResult = await pool.request()
-      .input('api_id', apiId)
-      .query('SELECT * FROM apis WHERE id = @api_id AND status = \'published\'');
+    const pool = await getMysqlPool();
+    const [rows] = await pool.execute(
+      'SELECT * FROM apis WHERE id = ? AND status = ?',
+      [apiId, 'published']
+    );
+    
+    const apiResult = rows as any[];
 
-    if (apiResult.recordset.length === 0) {
+    if (apiResult.length === 0) {
       return res.status(404).json({
         success: false,
         error: { code: 'NOT_FOUND', message: 'API not found or not published' },
       });
     }
 
-    const api = apiResult.recordset[0];
-
-    // Apply rate limiting
-    const rateLimitKey = `ratelimit:${req.apiKey.id}:${apiId}`;
-    // Rate limiting is handled by middleware in production
+    const api = apiResult[0];
 
     // Extract parameters from query string
     const parameters: Record<string, unknown> = {};
@@ -50,112 +48,86 @@ router.get('/execute/:apiId', authenticateApiKey, async (req: Request, res: Resp
       }
     }
 
-    // Extract pagination
-    const page = req.query.page ? parseInt(req.query.page as string) : undefined;
-    const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string) : undefined;
+    // Parse pagination params
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
+    const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : undefined;
 
     // Execute the API
     const result = await apiExecutionService.executeApi(apiId, parameters, page, pageSize);
 
     const responseTime = Date.now() - startTime;
 
-    // Log the request
-    await apiExecutionService.logRequest(
-      apiId,
-      req.apiKey.id,
-      'GET',
-      req.originalUrl,
-      result.success ? 200 : 400,
-      responseTime,
-      parameters,
-      req.ip || 'unknown',
-      req.get('user-agent') || 'unknown',
-      result.error?.message || null
-    );
-
-    if (!result.success) {
-      const statusCode = result.error?.code === 'QUERY_TIMEOUT' ? 504 :
-                         result.error?.code === 'INVALID_PARAMETER' ? 400 : 500;
-      return res.status(statusCode).json(result);
-    }
-
-    res.json(result);
+    res.json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
   } catch (error: any) {
     console.error('API execution error:', error);
-
-    // Log the error
-    await apiExecutionService.logRequest(
-      apiId,
-      req.apiKey?.id || null,
-      'GET',
-      req.originalUrl,
-      500,
-      Date.now() - startTime,
-      req.query as Record<string, unknown>,
-      req.ip || 'unknown',
-      req.get('user-agent') || 'unknown',
-      error.message
-    ).catch(err => console.error('Failed to log error:', err));
-
     res.status(500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while executing the API' },
+      error: { code: 'EXECUTION_ERROR', message: error.message },
     });
   }
 });
 
 /**
- * POST /api/execute/:apiId
- * Execute API with POST (for complex parameters)
+ * POST version for APIs that require POST
  */
 router.post('/execute/:apiId', authenticateApiKey, async (req: Request, res: Response) => {
   const startTime = Date.now();
   const apiId = req.params.apiId;
 
   try {
-    const { parameters, page, pageSize } = req.body;
+    // Check API access
+    if (req.apiKey.allowed_apis.length > 0 && !req.apiKey.allowed_apis.includes(apiId)) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'FORBIDDEN', message: 'This API key does not have access to this endpoint' },
+      });
+    }
 
-    const result = await apiExecutionService.executeApi(
-      apiId,
-      parameters || {},
-      page,
-      pageSize
+    // Get API details
+    const pool = await getMysqlPool();
+    const [rows] = await pool.execute(
+      'SELECT * FROM apis WHERE id = ? AND status = ?',
+      [apiId, 'published']
     );
+    
+    const apiResult = rows as any[];
+
+    if (apiResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'API not found or not published' },
+      });
+    }
+
+    const api = apiResult[0];
+
+    // Extract parameters from body
+    const parameters: Record<string, unknown> = req.body || {};
+
+    // Execute the API
+    const result = await apiExecutionService.executeApi(apiId, parameters);
 
     const responseTime = Date.now() - startTime;
 
-    // Log the request
-    await apiExecutionService.logRequest(
-      apiId,
-      req.apiKey.id,
-      'POST',
-      req.originalUrl,
-      result.success ? 200 : 400,
-      responseTime,
-      parameters || {},
-      req.ip || 'unknown',
-      req.get('user-agent') || 'unknown',
-      result.error?.message || null
-    );
-
-    if (!result.success) {
-      const statusCode = result.error?.code === 'QUERY_TIMEOUT' ? 504 :
-                         result.error?.code === 'INVALID_PARAMETER' ? 400 : 500;
-      return res.status(statusCode).json(result);
-    }
-
-    res.json(result);
+    res.json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
   } catch (error: any) {
     console.error('API execution error:', error);
     res.status(500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: 'An error occurred while executing the API' },
+      error: { code: 'EXECUTION_ERROR', message: error.message },
     });
   }
 });
 
 /**
- * GET /api/apis
  * Get all published APIs (for documentation)
  */
 router.get('/apis', async (req: Request, res: Response) => {
@@ -168,18 +140,19 @@ router.get('/apis', async (req: Request, res: Response) => {
       });
     }
 
-    const pool = await getAppDbPool();
-    const result = await pool.request()
-      .input('project_id', projectId)
-      .query(`
-        SELECT a.*, q.sql_text, q.parameters as query_parameters
-        FROM apis a
-        JOIN sql_queries q ON a.query_id = q.id
-        WHERE a.project_id = @project_id AND a.status = 'published'
-        ORDER BY a.created_at DESC
-      `);
+    const pool = await getMysqlPool();
+    const [rows] = await pool.execute(
+      `SELECT a.*, q.sql_text, q.parameters as query_parameters
+       FROM apis a
+       JOIN sql_queries q ON a.query_id = q.id
+       WHERE a.project_id = ? AND a.status = ?
+       ORDER BY a.created_at DESC`,
+      [projectId, 'published']
+    );
+    
+    const result = rows as any[];
 
-    const apis = result.recordset.map(api => ({
+    const apis = result.map((api: any) => ({
       ...api,
       parameters: JSON.parse(api.query_parameters || '[]'),
     }));

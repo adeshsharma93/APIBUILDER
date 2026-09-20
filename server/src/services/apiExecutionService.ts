@@ -192,7 +192,7 @@ export class ApiExecutionService {
     // Add parameters
     for (const [name, value] of Object.entries(input.parameters)) {
       if (value !== undefined && value !== null) {
-        request.input(name, value);
+        request.input(name, mssql.NVarChar, value);
       }
     }
 
@@ -269,7 +269,7 @@ export class ApiExecutionService {
       
       for (const [name, value] of Object.entries(input.parameters)) {
         if (value !== undefined && value !== null) {
-          request.input(name, value);
+          request.input(name, mssql.NVarChar, value);
         }
       }
       
