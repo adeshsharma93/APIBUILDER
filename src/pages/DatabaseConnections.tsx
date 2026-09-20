@@ -14,6 +14,7 @@ import {
   Clock,
   Server,
 } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 import { useStore } from '../store/useStore';
 
 export const DatabaseConnections: React.FC = () => {
@@ -82,21 +83,24 @@ export const DatabaseConnections: React.FC = () => {
     }
 
     try {
+      // Generate a project ID if not provided (for demo purposes)
+      const projectId = uuidv4();
+      
       // Save connection to backend
       const response = await fetch('http://localhost:3001/api/connections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: form.name,
-          projectName: form.projectName,
+          project_id: projectId,
           type: form.type,
           host: form.host,
           port: form.port,
           database_name: form.database,
           username: form.username,
           password: form.password,
-          ssl: form.ssl,
-          timeout: form.timeout,
+          ssl_enabled: form.ssl,
+          connection_timeout: form.timeout,
         }),
       });
 
