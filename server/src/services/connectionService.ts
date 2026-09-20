@@ -2,17 +2,19 @@ import mysql from 'mysql2/promise';
 import { encrypt, decrypt } from '../utils/encryption';
 
 export interface Connection {
-  id?: number;
-  user_id: number;
+  id?: string;
+  project_id: string;
   name: string;
-  type: 'mysql' | 'sqlserver';
-  host?: string;
-  port?: number;
-  database_name?: string;
-  username?: string;
+  type: 'mysql' | 'sqlserver' | 'postgresql';
+  host: string;
+  port: number;
+  database_name: string;
+  username: string;
   password_encrypted: string;
   ssl_enabled?: boolean;
-  is_default?: boolean;
+  connection_timeout?: number;
+  status?: 'connected' | 'disconnected' | 'error';
+  last_tested_at?: Date;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -27,7 +29,7 @@ export class ConnectionService {
       this.pool = mysql.createPool({
         host: process.env.MYSQL_DB_HOST || 'localhost',
         port: parseInt(process.env.MYSQL_DB_PORT || '3306'),
-        database: process.env.MYSQL_DB_NAME || 'SQLAPIBuilder',
+        database: process.env.MYSQL_DB_NAME || 'sql_api_builder',
         user: process.env.MYSQL_DB_USER || 'root',
         password: process.env.MYSQL_DB_PASSWORD || '',
         waitForConnections: true,
@@ -42,60 +44,62 @@ export class ConnectionService {
     const pool = await this.getPool();
     const encryptedPassword = encrypt(connection.password_encrypted);
     
+    // Generate UUID for id
+    const [uuidResult] = await pool.query("SELECT UUID() as id");
+    const id = (uuidResult as any)[0].id;
+    
     const [result] = await pool.query(
-      `INSERT INTO connections 
-       (user_id, name, type, host, port, database_name, username, password_encrypted, is_default)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO database_connections 
+       (id, project_id, name, type, host, port, database_name, username, encrypted_password, ssl_enabled, connection_timeout, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        connection.user_id,
+        id,
+        connection.project_id,
         connection.name,
         connection.type,
-        connection.host || null,
-        connection.port || null,
-        connection.database_name || null,
-        connection.username || null,
+        connection.host,
+        connection.port,
+        connection.database_name,
+        connection.username,
         encryptedPassword,
-        connection.is_default ? 1 : 0,
+        connection.ssl_enabled ? 1 : 0,
+        connection.connection_timeout || 30,
+        'disconnected',
       ]
     );
 
-    const insertId = (result as any).insertId;
-    const created = await this.getConnectionById(insertId, connection.user_id);
+    const created = await this.getConnectionById(id, connection.project_id);
     return created!;
   }
 
-  async getConnectionById(id: number, userId: number): Promise<Connection | null> {
+  async getConnectionById(id: string, projectId: string): Promise<Connection | null> {
     const pool = await this.getPool();
     
     const [rows] = await pool.query(
-      'SELECT * FROM connections WHERE id = ? AND user_id = ?',
-      [id, userId]
+      'SELECT * FROM database_connections WHERE id = ? AND project_id = ?',
+      [id, projectId]
     );
 
     const recordset = rows as any[];
     if (recordset.length === 0) return null;
     
     const conn = recordset[0];
-    conn.password_encrypted = decrypt(conn.password_encrypted);
+    // Don't decrypt here, only decrypt when needed for actual connection
     return conn;
   }
 
-  async getAllConnections(userId: number): Promise<Connection[]> {
+  async getAllConnections(projectId: string): Promise<Connection[]> {
     const pool = await this.getPool();
     
     const [rows] = await pool.query(
-      'SELECT * FROM connections WHERE user_id = ? ORDER BY created_at DESC',
-      [userId]
+      'SELECT * FROM database_connections WHERE project_id = ? ORDER BY created_at DESC',
+      [projectId]
     );
 
-    const recordset = rows as any[];
-    return recordset.map((conn: any) => {
-      conn.password_encrypted = decrypt(conn.password_encrypted);
-      return conn;
-    });
+    return rows as any[];
   }
 
-  async updateConnection(id: number, userId: number, updates: Partial<Connection>): Promise<Connection | null> {
+  async updateConnection(id: string, projectId: string, updates: Partial<Connection>): Promise<Connection | null> {
     const pool = await this.getPool();
     
     const fields: string[] = [];
@@ -122,30 +126,42 @@ export class ConnectionService {
       values.push(updates.username);
     }
     if (updates.password_encrypted !== undefined) {
-      fields.push('password_encrypted = ?');
+      fields.push('encrypted_password = ?');
       values.push(encrypt(updates.password_encrypted));
     }
-    if (updates.is_default !== undefined) {
-      fields.push('is_default = ?');
-      values.push(updates.is_default ? 1 : 0);
+    if (updates.ssl_enabled !== undefined) {
+      fields.push('ssl_enabled = ?');
+      values.push(updates.ssl_enabled ? 1 : 0);
+    }
+    if (updates.connection_timeout !== undefined) {
+      fields.push('connection_timeout = ?');
+      values.push(updates.connection_timeout);
+    }
+    if (updates.status !== undefined) {
+      fields.push('status = ?');
+      values.push(updates.status);
+    }
+    if (updates.last_tested_at !== undefined) {
+      fields.push('last_tested_at = ?');
+      values.push(updates.last_tested_at);
     }
     
     fields.push('updated_at = NOW()');
-    values.push(id, userId);
+    values.push(id, projectId);
 
-    const query = `UPDATE connections SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`;
+    const query = `UPDATE database_connections SET ${fields.join(', ')} WHERE id = ? AND project_id = ?`;
     await pool.query(query, values);
 
-    const updated = await this.getConnectionById(id, userId);
+    const updated = await this.getConnectionById(id, projectId);
     return updated;
   }
 
-  async deleteConnection(id: number, userId: number): Promise<boolean> {
+  async deleteConnection(id: string, projectId: string): Promise<boolean> {
     const pool = await this.getPool();
     
     const [result] = await pool.query(
-      'DELETE FROM connections WHERE id = ? AND user_id = ?',
-      [id, userId]
+      'DELETE FROM database_connections WHERE id = ? AND project_id = ?',
+      [id, projectId]
     );
 
     return (result as any).affectedRows > 0;

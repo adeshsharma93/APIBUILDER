@@ -92,7 +92,7 @@ export const DatabaseConnections: React.FC = () => {
           type: form.type,
           host: form.host,
           port: form.port,
-          database: form.database,
+          database_name: form.database,
           username: form.username,
           password: form.password,
           ssl: form.ssl,

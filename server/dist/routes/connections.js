@@ -45,19 +45,23 @@ const router = (0, express_1.Router)();
 router.use(auth_1.authenticateToken);
 /**
  * GET /api/connections
- * Get all database connections for the authenticated user
+ * Get all database connections for the authenticated user's project
  */
 router.get('/', async (req, res) => {
     try {
-        const userId = req.user?.id;
-        if (!userId) {
-            return res.status(401).json({
-                success: false,
-                error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
-            });
+        const projectId = req.user?.projectId;
+        if (!projectId) {
+            // For backward compatibility, try to get from query param
+            const projectIdParam = req.query.projectId;
+            if (!projectIdParam) {
+                return res.status(401).json({
+                    success: false,
+                    error: { code: 'UNAUTHORIZED', message: 'Project ID not found' },
+                });
+            }
+            return await getConnections(req, res, projectIdParam);
         }
-        const connections = await connectionService_1.default.getAllConnections(userId);
-        res.json({ success: true, data: connections });
+        await getConnections(req, res, projectId);
     }
     catch (error) {
         console.error('Get connections error:', error);
@@ -67,36 +71,48 @@ router.get('/', async (req, res) => {
         });
     }
 });
+async function getConnections(req, res, projectId) {
+    const connections = await connectionService_1.default.getAllConnections(projectId);
+    res.json({ success: true, data: connections });
+}
 /**
  * POST /api/connections
  * Create a new database connection
  */
 router.post('/', async (req, res) => {
     try {
-        const userId = req.user?.id;
-        if (!userId) {
+        const projectId = req.user?.projectId || req.body.project_id;
+        if (!projectId) {
             return res.status(401).json({
                 success: false,
-                error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
+                error: { code: 'UNAUTHORIZED', message: 'Project ID required' },
             });
         }
-        const { name, type, host, port, database_name, username, password, is_default } = req.body;
-        if (!name || !type || !username || !password) {
+        const { name, type, host, port, database_name, username, password, ssl_enabled, connection_timeout } = req.body;
+        if (!name || !type || !host || !username || !password) {
             return res.status(400).json({
                 success: false,
-                error: { code: 'INVALID_PARAMETER', message: 'Missing required fields: name, type, username, password' },
+                error: { code: 'INVALID_PARAMETER', message: 'Missing required fields: name, type, host, username, password' },
+            });
+        }
+        // For MySQL connections, database_name is required
+        if (type === 'mysql' && !database_name) {
+            return res.status(400).json({
+                success: false,
+                error: { code: 'INVALID_PARAMETER', message: 'Database name is required for MySQL connections' },
             });
         }
         const connection = await connectionService_1.default.createConnection({
-            user_id: userId,
+            project_id: projectId,
             name,
-            type: type || 'sqlserver',
+            type: type || 'mysql',
             host: host || 'localhost',
             port: port || (type === 'mysql' ? 3306 : 1433),
             database_name: database_name || '',
             username,
             password_encrypted: password,
-            is_default: is_default || false,
+            ssl_enabled: ssl_enabled || false,
+            connection_timeout: connection_timeout || 30,
         });
         res.status(201).json({ success: true, data: connection });
     }
@@ -114,14 +130,14 @@ router.post('/', async (req, res) => {
  */
 router.get('/:id', async (req, res) => {
     try {
-        const userId = req.user?.id;
-        if (!userId) {
+        const projectId = req.user?.projectId;
+        if (!projectId) {
             return res.status(401).json({
                 success: false,
-                error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
+                error: { code: 'UNAUTHORIZED', message: 'Project ID not found' },
             });
         }
-        const connection = await connectionService_1.default.getConnectionById(parseInt(req.params.id), userId);
+        const connection = await connectionService_1.default.getConnectionById(req.params.id, projectId);
         if (!connection) {
             return res.status(404).json({
                 success: false,
@@ -144,14 +160,14 @@ router.get('/:id', async (req, res) => {
  */
 router.post('/:id/test', async (req, res) => {
     try {
-        const userId = req.user?.id;
-        if (!userId) {
+        const projectId = req.user?.projectId;
+        if (!projectId) {
             return res.status(401).json({
                 success: false,
-                error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
+                error: { code: 'UNAUTHORIZED', message: 'Project ID not found' },
             });
         }
-        const connection = await connectionService_1.default.getConnectionById(parseInt(req.params.id), userId);
+        const connection = await connectionService_1.default.getConnectionById(req.params.id, projectId);
         if (!connection) {
             return res.status(404).json({
                 success: false,
@@ -175,6 +191,11 @@ router.post('/:id/test', async (req, res) => {
                 error: { code: 'CONNECTION_FAILED', message: 'Connection test failed' },
             });
         }
+        // Update connection status
+        await connectionService_1.default.updateConnection(req.params.id, projectId, {
+            status: 'connected',
+            last_tested_at: new Date(),
+        });
         res.json({ success: true, message: 'Connection test successful' });
     }
     catch (error) {
@@ -191,15 +212,15 @@ router.post('/:id/test', async (req, res) => {
  */
 router.put('/:id', async (req, res) => {
     try {
-        const userId = req.user?.id;
-        if (!userId) {
+        const projectId = req.user?.projectId;
+        if (!projectId) {
             return res.status(401).json({
                 success: false,
-                error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
+                error: { code: 'UNAUTHORIZED', message: 'Project ID not found' },
             });
         }
         const updates = req.body;
-        const connection = await connectionService_1.default.updateConnection(parseInt(req.params.id), userId, updates);
+        const connection = await connectionService_1.default.updateConnection(req.params.id, projectId, updates);
         if (!connection) {
             return res.status(404).json({
                 success: false,
@@ -222,14 +243,14 @@ router.put('/:id', async (req, res) => {
  */
 router.delete('/:id', async (req, res) => {
     try {
-        const userId = req.user?.id;
-        if (!userId) {
+        const projectId = req.user?.projectId;
+        if (!projectId) {
             return res.status(401).json({
                 success: false,
-                error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
+                error: { code: 'UNAUTHORIZED', message: 'Project ID not found' },
             });
         }
-        const deleted = await connectionService_1.default.deleteConnection(parseInt(req.params.id), userId);
+        const deleted = await connectionService_1.default.deleteConnection(req.params.id, projectId);
         if (!deleted) {
             return res.status(404).json({
                 success: false,

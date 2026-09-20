@@ -55,10 +55,10 @@ export interface UserConnection {
   username: string;
   encrypted_password: string;
   ssl_enabled: boolean;
-  type: 'mysql' | 'sqlserver';
+  type: 'mysql' | 'sqlserver' | 'postgresql';
 }
 
-export async function getUserDbPool(connectionId: string): Promise<{ type: 'mysql' | 'sqlserver', pool: mysql.Pool | ConnectionPool, mysqlPool?: mysql.Pool, mssqlPool?: ConnectionPool }> {
+export async function getUserDbPool(connectionId: string): Promise<{ type: 'mysql' | 'sqlserver' | 'postgresql', pool: mysql.Pool | ConnectionPool, mysqlPool?: mysql.Pool, mssqlPool?: ConnectionPool }> {
   if (userDbPools.has(connectionId)) {
     const cached = userDbPools.get(connectionId)!;
     return { 
@@ -70,7 +70,7 @@ export async function getUserDbPool(connectionId: string): Promise<{ type: 'mysq
   }
 
   const pool = await getAppDbPool();
-  const [rows] = await pool.query('SELECT * FROM connections WHERE id = ?', [connectionId]);
+  const [rows] = await pool.query('SELECT * FROM database_connections WHERE id = ?', [connectionId]);
   
   const recordset = rows as any[];
   if (recordset.length === 0) {
@@ -129,7 +129,7 @@ export async function testConnection(config: {
   username: string;
   password: string;
   ssl: boolean;
-  type: 'mysql' | 'sqlserver';
+  type: 'mysql' | 'sqlserver' | 'postgresql';
 }): Promise<boolean> {
   try {
     if (config.type === 'mysql') {
