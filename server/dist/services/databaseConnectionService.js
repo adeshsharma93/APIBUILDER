@@ -1,10 +1,6 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.databaseConnectionService = exports.DatabaseConnectionService = void 0;
-const mssql_1 = __importDefault(require("mssql"));
 const mysqlDatabase_1 = require("../config/mysqlDatabase");
 const database_1 = require("../config/database");
 const encryption_1 = require("../utils/encryption");
@@ -122,6 +118,7 @@ class DatabaseConnectionService {
                 username: connection.username,
                 password,
                 ssl: connection.ssl_enabled,
+                type: 'sqlserver',
             });
         }
         // Update status
@@ -134,11 +131,7 @@ class DatabaseConnectionService {
         }
         else {
             const pool = await (0, database_1.getAppDbPool)();
-            await pool.request()
-                .input('id', mssql_1.default.NVarChar, id)
-                .input('status', mssql_1.default.NVarChar, status)
-                .input('last_tested_at', mssql_1.default.DateTime, now)
-                .query('UPDATE database_connections SET status = @status, last_tested_at = @last_tested_at, updated_at = CURRENT_TIMESTAMP WHERE id = @id');
+            await pool.query('UPDATE database_connections SET status = ?, last_tested_at = ?, updated_at = NOW() WHERE id = ?', [status, now, id]);
         }
         if (!success) {
             return { success: false, error: 'Connection test failed' };
@@ -155,9 +148,7 @@ class DatabaseConnectionService {
         }
         else {
             const pool = await (0, database_1.getAppDbPool)();
-            await pool.request()
-                .input('id', mssql_1.default.NVarChar, id)
-                .query('DELETE FROM database_connections WHERE id = @id');
+            await pool.query('DELETE FROM database_connections WHERE id = ?', [id]);
         }
     }
     /**

@@ -194,7 +194,12 @@ export class SchemaService {
    * Fetch tables from SQL Server database
    */
   private async getSqlServerTables(connectionId: string): Promise<TableInfo[]> {
-    const pool = await getUserDbPool(connectionId);
+    const poolResult = await getUserDbPool(connectionId);
+    const pool = poolResult.mssqlPool;
+    
+    if (!pool) {
+      throw new Error('SQL Server pool not available');
+    }
 
     // Get all tables
     const tablesResult = await pool.request().query(`

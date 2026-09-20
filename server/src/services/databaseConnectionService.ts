@@ -167,6 +167,7 @@ export class DatabaseConnectionService {
         username: connection.username,
         password,
         ssl: connection.ssl_enabled,
+        type: 'sqlserver',
       });
     }
 
@@ -183,11 +184,10 @@ export class DatabaseConnectionService {
       );
     } else {
       const pool = await getAppDbPool();
-      await pool.request()
-        .input('id', mssql.NVarChar, id)
-         .input('status', mssql.NVarChar, status)
-         .input('last_tested_at', mssql.DateTime, now)
-        .query('UPDATE database_connections SET status = @status, last_tested_at = @last_tested_at, updated_at = CURRENT_TIMESTAMP WHERE id = @id');
+      await pool.query(
+        'UPDATE database_connections SET status = ?, last_tested_at = ?, updated_at = NOW() WHERE id = ?',
+        [status, now, id]
+      );
     }
 
     if (!success) {
@@ -206,9 +206,7 @@ export class DatabaseConnectionService {
       await pool.execute('DELETE FROM database_connections WHERE id = ?', [id]);
     } else {
       const pool = await getAppDbPool();
-      await pool.request()
-        .input('id', mssql.NVarChar, id)
-        .query('DELETE FROM database_connections WHERE id = @id');
+      await pool.query('DELETE FROM database_connections WHERE id = ?', [id]);
     }
   }
 
