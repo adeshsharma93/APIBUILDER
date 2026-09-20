@@ -182,7 +182,10 @@ export class ApiExecutionService {
    * Execute SQL Server query
    */
   private async executeSqlServerQuery(input: ExecuteQueryInput, isSelect: boolean): Promise<any> {
-    const pool = await getUserDbPool(input.connectionId);
+    const dbPool = await getUserDbPool(input.connectionId);
+    const pool = dbPool.mssqlPool;
+    if (!pool) throw new Error('SQL Server pool not found');
+    
     const request = pool.request();
 
     if (input.timeout) {
@@ -264,7 +267,10 @@ export class ApiExecutionService {
       const result = rows as any[];
       return result[0]?.total || 0;
     } else {
-      const pool = await getUserDbPool(input.connectionId);
+      const dbPool = await getUserDbPool(input.connectionId);
+      const pool = dbPool.mssqlPool;
+      if (!pool) throw new Error('SQL Server pool not found');
+      
       const request = pool.request();
       
       for (const [name, value] of Object.entries(input.parameters)) {
@@ -284,16 +290,16 @@ export class ApiExecutionService {
   async executeApi(apiId: string, parameters: Record<string, unknown>, page?: number, pageSize?: number): Promise<QueryResult> {
     const appPool = await getAppDbPool();
 
-    // Load API definition
-    const apiResult = await appPool.request()
-      .input('api_id', mssql.NVarChar, apiId)
-      .query(`
-        SELECT a.*, q.sql_text, q.parameters as query_parameters, q.connection_id, dc.type as db_type
-        FROM apis a
-        JOIN sql_queries q ON a.query_id = q.id
-        JOIN database_connections dc ON q.connection_id = dc.id
-        WHERE a.id = @api_id AND a.status = 'published'
-      `);
+    // Load API definition using MySQL syntax
+    const [apiRows] = await appPool.query(`
+      SELECT a.*, q.sql_text, q.parameters as query_parameters, q.connection_id, dc.type as db_type
+      FROM apis a
+      JOIN sql_queries q ON a.query_id = q.id
+      JOIN database_connections dc ON q.connection_id = dc.id
+      WHERE a.id = ? AND a.status = 'published'
+    `, [apiId]);
+
+    const apiResult = { recordset: apiRows as any[] };
 
     if (apiResult.recordset.length === 0) {
       return {
@@ -393,49 +399,30 @@ export class ApiExecutionService {
   ): Promise<void> {
     const pool = await getAppDbPool();
 
-    await pool.request()
-      .input('api_id', mssql.NVarChar, apiId)
-      .input('api_key_id', mssql.NVarChar, apiKeyId)
-      .input('method', mssql.NVarChar, method)
-      .input('endpoint', mssql.NVarChar, endpoint)
-      .input('status_code', mssql.NVarChar, statusCode)
-      .input('response_time', mssql.NVarChar, responseTime)
-      .input('parameters', mssql.NVarChar, JSON.stringify(parameters))
-      .input('ip_address', mssql.NVarChar, ipAddress)
-      .input('user_agent', mssql.NVarChar, userAgent)
-      .input('error_message', mssql.NVarChar, errorMessage)
-      .query(`
-        INSERT INTO api_request_logs (
-          api_id, api_key_id, method, endpoint, status_code, response_time,
-          parameters, ip_address, user_agent, error_message
-        ) VALUES (
-          @api_id, @api_key_id, @method, @endpoint, @status_code, @response_time,
-          @parameters, @ip_address, @user_agent, @error_message
-        )
-      `);
+    await pool.query(`
+      INSERT INTO api_request_logs (
+        api_id, api_key_id, method, endpoint, status_code, response_time,
+        parameters, ip_address, user_agent, error_message
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [apiId, apiKeyId, method, endpoint, statusCode, responseTime, JSON.stringify(parameters), ipAddress, userAgent, errorMessage]);
 
     // Update API stats
     if (statusCode >= 400) {
-      await pool.request()
-        .input('api_id', mssql.NVarChar, apiId)
-        .query(`
-          UPDATE apis 
-          SET error_count = error_count + 1,
-              request_count = request_count + 1,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = @api_id
-        `);
+      await pool.query(`
+        UPDATE apis 
+        SET error_count = error_count + 1,
+            request_count = request_count + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [apiId]);
     } else {
-      await pool.request()
-        .input('api_id', mssql.NVarChar, apiId)
-        .input('response_time', mssql.NVarChar, responseTime)
-        .query(`
-          UPDATE apis 
-          SET request_count = request_count + 1,
-              avg_response_time = (avg_response_time * (request_count - 1) + @response_time) / request_count,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = @api_id
-        `);
+      await pool.query(`
+        UPDATE apis 
+        SET request_count = request_count + 1,
+            avg_response_time = (avg_response_time * (request_count - 1) + ?) / request_count,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [responseTime, apiId]);
     }
   }
 }

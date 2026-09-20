@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import connectionService from '../services/connectionService';
 import { authenticateToken } from '../middleware/auth';
+import { decrypt } from '../utils/encryption';
 
 const router = Router();
 
@@ -135,11 +136,12 @@ router.post('/:id/test', async (req: Request, res: Response) => {
     
     const result = await testConnection({
       host: connection.host || 'localhost',
-      port: connection.port || 1433,
-      database: connection.database_name || 'master',
+      port: connection.port || (connection.type === 'mysql' ? 3306 : 1433),
+      database: connection.database_name || '',
       username: connection.username || '',
-      password: connection.password_encrypted,
-      ssl: false,
+      password: decrypt(connection.password_encrypted),
+      ssl: connection.ssl_enabled || false,
+      type: connection.type as 'mysql' | 'sqlserver',
     });
 
     if (!result) {

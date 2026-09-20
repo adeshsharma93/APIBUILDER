@@ -1,4 +1,4 @@
-import mssql from 'mssql';
+import mysql from 'mysql2/promise';
 import { getAppDbPool } from '../config/database';
 import { generateApiKey, hashApiKey, verifyApiKey } from '../utils/encryption';
 import { v4 as uuidv4 } from 'uuid';
@@ -26,178 +26,153 @@ export interface CreateApiKeyInput {
 
 export interface CreateApiKeyResponse {
   apiKey: ApiKey;
-  rawKey: string; // Only returned once at creation
+  rawKey: string;
 }
 
 export class ApiKeyService {
-  /**
-   * Create a new API key
-   */
   async createApiKey(input: CreateApiKeyInput): Promise<CreateApiKeyResponse> {
     const pool = await getAppDbPool();
     const id = uuidv4();
-
-    // Generate the raw API key
     const rawKey = generateApiKey();
-
-    // Hash the key for storage
     const key_hash = await hashApiKey(rawKey);
-
-    // Get prefix for identification (first 10 chars)
     const key_prefix = rawKey.substring(0, 14);
 
-    const result = await pool.request()
-      .input('id', mssql.NVarChar, id)
-      .input('project_id', mssql.NVarChar, input.project_id)
-      .input('name', mssql.NVarChar, input.name)
-      .input('key_hash', mssql.NVarChar, key_hash)
-      .input('key_prefix', mssql.NVarChar, key_prefix)
-      .input('allowed_apis', mssql.NVarChar, input.allowed_apis || [])
-      .input('expires_at', mssql.NVarChar, input.expires_at || null)
-      .input('created_by', mssql.NVarChar, input.created_by)
-      .query(`
-        INSERT INTO api_keys (
-          id, project_id, name, key_hash, key_prefix, allowed_apis, expires_at, created_by
-        ) OUTPUT INSERTED.*
-        VALUES (
-          @id, @project_id, @name, @key_hash, @key_prefix, @allowed_apis, @expires_at, @created_by
-        )
-      `);
+    await pool.query(
+      `INSERT INTO api_keys (id, project_id, name, key_hash, key_prefix, allowed_apis, expires_at, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        input.project_id,
+        input.name,
+        key_hash,
+        key_prefix,
+        JSON.stringify(input.allowed_apis || []),
+        input.expires_at || null,
+        input.created_by,
+      ]
+    );
 
-    return {
-      apiKey: this.formatApiKey(result.recordset[0]),
-      rawKey, // Return the raw key only once
+    const apiKey: ApiKey = {
+      id,
+      project_id: input.project_id,
+      name: input.name,
+      key_prefix,
+      allowed_apis: input.allowed_apis || [],
+      expires_at: input.expires_at || null,
+      last_used_at: null,
+      is_active: true,
+      request_count: 0,
+      created_at: new Date().toISOString(),
     };
+
+    return { apiKey, rawKey };
   }
 
-  /**
-   * Get all API keys for a project
-   */
-  async getApiKeys(projectId: string): Promise<ApiKey[]> {
+  async getApiKeyById(id: string, projectId: string): Promise<ApiKey | null> {
     const pool = await getAppDbPool();
-    const result = await pool.request()
-      .input('project_id', mssql.NVarChar, projectId)
-      .query('SELECT * FROM api_keys WHERE project_id = @project_id ORDER BY created_at DESC');
+    const [rows] = await pool.query(
+      'SELECT * FROM api_keys WHERE id = ? AND project_id = ?',
+      [id, projectId]
+    );
 
-    return result.recordset.map(this.formatApiKey);
+    const recordset = rows as any[];
+    if (recordset.length === 0) return null;
+
+    const key = recordset[0];
+    key.allowed_apis = typeof key.allowed_apis === 'string' ? JSON.parse(key.allowed_apis) : key.allowed_apis;
+    return key;
   }
 
-  /**
-   * Get a single API key by ID
-   */
-  async getApiKey(id: string): Promise<ApiKey | null> {
+  async getApiKeysByProject(projectId: string): Promise<ApiKey[]> {
     const pool = await getAppDbPool();
-    const result = await pool.request()
-      .input('id', mssql.NVarChar, id)
-      .query('SELECT * FROM api_keys WHERE id = @id');
+    const [rows] = await pool.query(
+      'SELECT * FROM api_keys WHERE project_id = ? ORDER BY created_at DESC',
+      [projectId]
+    );
 
-    if (result.recordset.length === 0) {
+    const recordset = rows as any[];
+    return recordset.map((key: any) => {
+      key.allowed_apis = typeof key.allowed_apis === 'string' ? JSON.parse(key.allowed_apis) : key.allowed_apis;
+      return key;
+    });
+  }
+
+  async validateApiKey(rawKey: string): Promise<ApiKey | null> {
+    const pool = await getAppDbPool();
+    const keyHash = await hashApiKey(rawKey);
+    
+    const [rows] = await pool.query(
+      'SELECT * FROM api_keys WHERE key_hash = ? AND is_active = TRUE',
+      [keyHash]
+    );
+
+    const recordset = rows as any[];
+    if (recordset.length === 0) return null;
+
+    const key = recordset[0];
+    
+    if (key.expires_at && new Date(key.expires_at) < new Date()) {
       return null;
     }
 
-    return this.formatApiKey(result.recordset[0]);
+    key.allowed_apis = typeof key.allowed_apis === 'string' ? JSON.parse(key.allowed_apis) : key.allowed_apis;
+    return key;
   }
 
-  /**
-   * Verify an API key and return the key record if valid
-   */
-  async verifyApiKey(rawKey: string): Promise<{ valid: boolean; apiKey?: ApiKey; error?: string }> {
+  async updateApiKeyLastUsed(id: string): Promise<void> {
     const pool = await getAppDbPool();
-
-    // Get the key prefix to find potential matches
-    const prefix = rawKey.substring(0, 14);
-
-    const result = await pool.request()
-      .input('key_prefix', mssql.NVarChar, prefix)
-      .query('SELECT * FROM api_keys WHERE key_prefix = @key_prefix AND is_active = true');
-
-    if (result.recordset.length === 0) {
-      return { valid: false, error: 'Invalid API key' };
-    }
-
-    // Check each matching key
-    for (const row of result.recordset) {
-      const isValid = await verifyApiKey(rawKey, row.key_hash);
-
-      if (isValid) {
-        const apiKey = this.formatApiKey(row);
-
-        // Check expiration
-        if (apiKey.expires_at && new Date(apiKey.expires_at) < new Date()) {
-          return { valid: false, error: 'API key has expired' };
-        }
-
-        // Update last used
-        await pool.request()
-          .input('id', mssql.NVarChar, apiKey.id)
-          .query(`
-            UPDATE api_keys 
-            SET last_used_at = CURRENT_TIMESTAMP,
-                request_count = request_count + 1
-            WHERE id = @id
-          `);
-
-        return { valid: true, apiKey };
-      }
-    }
-
-    return { valid: false, error: 'Invalid API key' };
+    await pool.query(
+      `UPDATE api_keys 
+       SET last_used_at = NOW(), request_count = request_count + 1 
+       WHERE id = ?`,
+      [id]
+    );
   }
 
-  /**
-   * Check if an API key has access to a specific API
-   */
-  async hasAccessToApi(apiKeyId: string, apiId: string): Promise<boolean> {
-    const apiKey = await this.getApiKey(apiKeyId);
+  async deleteApiKey(id: string, projectId: string): Promise<boolean> {
+    const pool = await getAppDbPool();
+    const [result] = await pool.query(
+      'DELETE FROM api_keys WHERE id = ? AND project_id = ?',
+      [id, projectId]
+    );
+
+    return (result as any).affectedRows > 0;
+  }
+
+  async deactivateApiKey(id: string, projectId: string): Promise<boolean> {
+    const pool = await getAppDbPool();
+    const [result] = await pool.query(
+      'UPDATE api_keys SET is_active = FALSE WHERE id = ? AND project_id = ?',
+      [id, projectId]
+    );
+
+    return (result as any).affectedRows > 0;
+  }
+
+  async verifyApiKey(rawKey: string): Promise<{ valid: boolean; apiKey?: ApiKey }> {
+    const apiKey = await this.validateApiKey(rawKey);
     if (!apiKey) {
-      return false;
+      return { valid: false };
     }
-
-    // Empty allowed_apis means access to all APIs
-    if (apiKey.allowed_apis.length === 0) {
-      return true;
-    }
-
-    return apiKey.allowed_apis.includes(apiId);
+    return { valid: true, apiKey };
   }
 
-  /**
-   * Revoke an API key
-   */
-  async revokeApiKey(id: string): Promise<void> {
+  async hasAccessToApi(apiKeyId: string, apiId: string): Promise<boolean> {
     const pool = await getAppDbPool();
-    await pool.request()
-      .input('id', mssql.NVarChar, id)
-      .query('UPDATE api_keys SET is_active = false WHERE id = @id');
-  }
+    const [rows] = await pool.query(
+      'SELECT allowed_apis FROM api_keys WHERE id = ?',
+      [apiKeyId]
+    );
 
-  /**
-   * Delete an API key
-   */
-  async deleteApiKey(id: string): Promise<void> {
-    const pool = await getAppDbPool();
-    await pool.request()
-      .input('id', mssql.NVarChar, id)
-      .query('DELETE FROM api_keys WHERE id = @id');
-  }
+    const recordset = rows as any[];
+    if (recordset.length === 0) return false;
 
-  /**
-   * Format database row to API response (never expose hash)
-   */
-  private formatApiKey(row: any): ApiKey {
-    return {
-      id: row.id,
-      project_id: row.project_id,
-      name: row.name,
-      key_prefix: row.key_prefix,
-      allowed_apis: row.allowed_apis || [],
-      expires_at: row.expires_at,
-      last_used_at: row.last_used_at,
-      is_active: row.is_active,
-      request_count: row.request_count,
-      created_at: row.created_at,
-    };
+    const allowedApis = typeof recordset[0].allowed_apis === 'string' 
+      ? JSON.parse(recordset[0].allowed_apis) 
+      : recordset[0].allowed_apis;
+    
+    return allowedApis.includes(apiId) || allowedApis.includes('*');
   }
 }
 
-export const apiKeyService = new ApiKeyService();
+export default new ApiKeyService();
