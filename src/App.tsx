@@ -13,6 +13,8 @@ import { Logs } from './pages/Logs';
 import { Documentation } from './pages/Documentation';
 import { SettingsPage } from './pages/Settings';
 import { Login } from './pages/Login';
+import { Users } from './pages/Users';
+import { Projects } from './pages/Projects';
 import { DataInitializer } from './components/DataInitializer';
 import { useStore } from './store/useStore';
 
@@ -44,6 +46,8 @@ function App() {
           <Route path="/apis/new" element={<ApiBuilder />} />
           <Route path="/apis/:id" element={<ApiDetail />} />
           <Route path="/api-keys" element={<ApiKeys />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/projects" element={<Projects />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/documentation" element={<Documentation />} />
           <Route path="/settings" element={<SettingsPage />} />

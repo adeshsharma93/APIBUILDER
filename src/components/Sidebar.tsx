@@ -12,6 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  Users,
+  FolderKanban,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
@@ -22,6 +24,8 @@ const navItems = [
   { path: '/editor', label: 'SQL Editor', icon: Code2 },
   { path: '/apis', label: 'APIs', icon: Globe },
   { path: '/api-keys', label: 'API Keys', icon: Key },
+  { path: '/users', label: 'Users', icon: Users },
+  { path: '/projects', label: 'Projects', icon: FolderKanban },
   { path: '/logs', label: 'Logs', icon: ScrollText },
   { path: '/documentation', label: 'Documentation', icon: BookOpen },
   { path: '/settings', label: 'Settings', icon: Settings },

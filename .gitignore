@@ -1,8 +1,18 @@
 ```
+# Dependencies
+node_modules/
+
 # Build artifacts
 dist/
-build/
-*.css
-*.js
-*.html
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Logs
+*.log
+
+# Package lock files
+package-lock.json
 ```

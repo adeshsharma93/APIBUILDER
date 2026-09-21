@@ -19,7 +19,7 @@ interface User {
   role: string;
 }
 
-export default function Projects() {
+export const Projects = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);

@@ -11,7 +11,7 @@ interface User {
   created_at: string;
 }
 
-export default function Users() {
+export const Users = () => {
   const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
