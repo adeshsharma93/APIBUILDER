@@ -7,6 +7,8 @@ import connectionsRouter from './routes/connections';
 import apiExecutionRouter from './routes/apiExecution';
 import schemaRouter from './routes/schema';
 import queryRouter from './routes/query';
+import usersRouter from './routes/users';
+import projectsRouter from './routes/projects';
 import { getAppDbPool } from './config/database';
 import { getMysqlPool } from './config/mysqlDatabase';
 
@@ -32,6 +34,8 @@ app.use('/api/connections', connectionsRouter);
 app.use('/api', apiExecutionRouter);
 app.use('/api/schema', schemaRouter);
 app.use('/api/query', queryRouter);
+app.use('/api/users', usersRouter);
+app.use('/api/projects', projectsRouter);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -12,6 +12,8 @@ const connections_1 = __importDefault(require("./routes/connections"));
 const apiExecution_1 = __importDefault(require("./routes/apiExecution"));
 const schema_1 = __importDefault(require("./routes/schema"));
 const query_1 = __importDefault(require("./routes/query"));
+const users_1 = __importDefault(require("./routes/users"));
+const projects_1 = __importDefault(require("./routes/projects"));
 const database_1 = require("./config/database");
 const mysqlDatabase_1 = require("./config/mysqlDatabase");
 dotenv_1.default.config();
@@ -32,6 +34,8 @@ app.use('/api/connections', connections_1.default);
 app.use('/api', apiExecution_1.default);
 app.use('/api/schema', schema_1.default);
 app.use('/api/query', query_1.default);
+app.use('/api/users', users_1.default);
+app.use('/api/projects', projects_1.default);
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);

@@ -199,14 +199,14 @@ async function authenticateToken(req, res, next) {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         // For development, allow requests without token
         // In production, this should return 401
-        req.user = { id: 1 }; // Default user for development
+        req.user = { id: 1, projectId: 'default-project-id' }; // Default user and project for development
         return next();
     }
     const token = authHeader.substring(7);
     try {
         // TODO: Implement proper JWT verification
         // For now, just extract user ID from token (in real app, verify JWT signature)
-        req.user = { id: 1, token };
+        req.user = { id: 1, projectId: 'default-project-id', token };
         next();
     }
     catch (error) {
