@@ -12,11 +12,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  FolderKanban,
+  Users as UsersIcon,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/projects', label: 'Projects', icon: FolderKanban },
+  { path: '/users', label: 'Users', icon: UsersIcon, adminOnly: true },
   { path: '/connections', label: 'Database Connections', icon: Database },
   { path: '/explorer', label: 'Database Explorer', icon: Database },
   { path: '/editor', label: 'SQL Editor', icon: Code2 },
@@ -28,8 +32,10 @@ const navItems = [
 ];
 
 export const Sidebar: React.FC = () => {
-  const { sidebarCollapsed, toggleSidebar } = useStore();
+  const { sidebarCollapsed, toggleSidebar, currentUser } = useStore();
   const location = useLocation();
+  const isAdmin = currentUser?.role === 'admin';
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
   useEffect(() => {
     // Close sidebar on mobile when navigating
@@ -61,7 +67,7 @@ export const Sidebar: React.FC = () => {
       {/* Navigation */}
       <nav className="flex-1 py-4 overflow-y-auto">
         <ul className="space-y-1 px-2">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <li key={item.path}>
               <NavLink
                 to={item.path}

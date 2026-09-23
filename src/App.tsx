@@ -13,6 +13,8 @@ import { Logs } from './pages/Logs';
 import { Documentation } from './pages/Documentation';
 import { SettingsPage } from './pages/Settings';
 import { Login } from './pages/Login';
+import Users from './pages/Users';
+import Projects from './pages/Projects';
 import { DataInitializer } from './components/DataInitializer';
 import { useStore } from './store/useStore';
 
@@ -37,6 +39,8 @@ function App() {
         {/* Protected Routes */}
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/users" element={<Users />} />
           <Route path="/connections" element={<DatabaseConnections />} />
           <Route path="/explorer" element={<DatabaseExplorer />} />
           <Route path="/editor" element={<SqlEditor />} />

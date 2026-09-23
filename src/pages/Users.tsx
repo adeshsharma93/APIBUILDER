@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { UserPlus, Edit2, Trash2, Shield, Mail, Calendar } from 'lucide-react';
+import { UserPlus, Trash2, Mail, Calendar, AlertCircle } from 'lucide-react';
+
+const API_BASE_URL = 'http://localhost:3001/api';
 
 interface User {
   id: string;
@@ -11,10 +11,27 @@ interface User {
   created_at: string;
 }
 
+async function apiRequest<T = any>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  let data: any = null;
+  try {
+    data = await response.json();
+  } catch {
+    // non-JSON response
+  }
+  if (!response.ok || data?.success === false) {
+    throw new Error(data?.error || `Request failed with status ${response.status}`);
+  }
+  return data as T;
+}
+
 export default function Users() {
-  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
@@ -28,13 +45,18 @@ export default function Users() {
   }, []);
 
   const fetchUsers = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const response = await axios.get('http://localhost:3001/api/users');
-      if (response.data.success) {
-        setUsers(response.data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching users:', error);
+      const result = await apiRequest<{ success: boolean; data: User[] }>('/users');
+      setUsers(result.data ?? []);
+    } catch (err: any) {
+      console.error('Error fetching users:', err);
+      setError(
+        err?.message === 'Failed to fetch'
+          ? 'Cannot connect to server. Please check if the backend is running on port 3001.'
+          : err?.message || 'Failed to fetch users'
+      );
     } finally {
       setLoading(false);
     }
@@ -43,42 +65,34 @@ export default function Users() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://localhost:3001/api/users', formData);
-      if (response.data.success) {
-        alert('User created successfully!');
-        setFormData({ username: '', email: '', password: '', role: 'developer' });
-        setShowForm(false);
-        fetchUsers();
-      }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to create user');
+      await apiRequest('/users', { method: 'POST', body: JSON.stringify(formData) });
+      alert('User created successfully!');
+      setFormData({ username: '', email: '', password: '', role: 'developer' });
+      setShowForm(false);
+      fetchUsers();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to create user');
     }
   };
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     try {
-      const response = await axios.put(`http://localhost:3001/api/users/${userId}/role`, {
-        role: newRole
-      });
-      if (response.data.success) {
-        alert('Role updated successfully!');
-        fetchUsers();
-      }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to update role');
+      await apiRequest(`/users/${userId}/role`, { method: 'PUT', body: JSON.stringify({ role: newRole }) });
+      alert('Role updated successfully!');
+      fetchUsers();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update role');
     }
   };
 
   const handleDelete = async (userId: string) => {
     if (!confirm('Are you sure you want to delete this user?')) return;
     try {
-      const response = await axios.delete(`http://localhost:3001/api/users/${userId}`);
-      if (response.data.success) {
-        alert('User deleted successfully!');
-        fetchUsers();
-      }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to delete user');
+      await apiRequest(`/users/${userId}`, { method: 'DELETE' });
+      alert('User deleted successfully!');
+      fetchUsers();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete user');
     }
   };
 
@@ -197,7 +211,20 @@ export default function Users() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {users.length === 0 ? (
+              {error ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-red-600">
+                    <AlertCircle size={48} className="mx-auto mb-2 opacity-50" />
+                    <p>{error}</p>
+                    <button
+                      onClick={fetchUsers}
+                      className="mt-3 px-4 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                    >
+                      Retry
+                    </button>
+                  </td>
+                </tr>
+              ) : users.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
                     <UserPlus size={48} className="mx-auto mb-2 opacity-50" />

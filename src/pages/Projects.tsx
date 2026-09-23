@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { FolderPlus, Users, UserPlus, X, Check, Trash2, Settings } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { FolderPlus, Users, UserPlus, X, Check, Trash2, Settings, AlertCircle } from 'lucide-react';
+
+const API_BASE_URL = 'http://localhost:3001/api';
 
 interface Project {
   id: string;
@@ -19,10 +21,29 @@ interface User {
   role: string;
 }
 
+async function apiRequest<T = any>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  let data: any = null;
+  try {
+    data = await response.json();
+  } catch {
+    // non-JSON response
+  }
+  if (!response.ok || data?.success === false) {
+    throw new Error(data?.error || `Request failed with status ${response.status}`);
+  }
+  return data as T;
+}
+
 export default function Projects() {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [formData, setFormData] = useState({
@@ -37,13 +58,18 @@ export default function Projects() {
   }, []);
 
   const fetchProjects = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const response = await axios.get('http://localhost:3001/api/projects');
-      if (response.data.success) {
-        setProjects(response.data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching projects:', error);
+      const result = await apiRequest<{ success: boolean; data: Project[] }>('/projects');
+      setProjects(result.data ?? []);
+    } catch (err: any) {
+      console.error('Error fetching projects:', err);
+      setError(
+        err?.message === 'Failed to fetch'
+          ? 'Cannot connect to server. Please check if the backend is running on port 3001.'
+          : err?.message || 'Failed to fetch projects'
+      );
     } finally {
       setLoading(false);
     }
@@ -51,10 +77,8 @@ export default function Projects() {
 
   const fetchUsers = async () => {
     try {
-      const response = await axios.get('http://localhost:3001/api/users');
-      if (response.data.success) {
-        setUsers(response.data.data);
-      }
+      const result = await apiRequest<{ success: boolean; data: User[] }>('/users');
+      setUsers(result.data ?? []);
     } catch (error) {
       console.error('Error fetching users:', error);
     }
@@ -63,68 +87,53 @@ export default function Projects() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://localhost:3001/api/projects', formData);
-      if (response.data.success) {
-        alert('Project created successfully!');
-        setFormData({ name: '', description: '', ownerId: '' });
-        setShowForm(false);
-        fetchProjects();
-      }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to create project');
+      await apiRequest('/projects', { method: 'POST', body: JSON.stringify(formData) });
+      alert('Project created successfully!');
+      setFormData({ name: '', description: '', ownerId: '' });
+      setShowForm(false);
+      fetchProjects();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to create project');
     }
   };
 
   const viewProjectDetails = async (projectId: string) => {
     try {
-      const response = await axios.get(`http://localhost:3001/api/projects/${projectId}`);
-      if (response.data.success) {
-        setSelectedProject(response.data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching project details:', error);
+      const result = await apiRequest<{ success: boolean; data: Project }>(`/projects/${projectId}`);
+      setSelectedProject(result.data);
+    } catch (err: any) {
+      alert(err?.message || 'Error fetching project details');
     }
   };
 
   const addMember = async (projectId: string, userId: string, role: string) => {
     try {
-      const response = await axios.post(`http://localhost:3001/api/projects/${projectId}/members`, {
-        userId,
-        role
-      });
-      if (response.data.success) {
-        alert('Member added successfully!');
-        viewProjectDetails(projectId);
-      }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to add member');
+      await apiRequest(`/projects/${projectId}/members`, { method: 'POST', body: JSON.stringify({ userId, role }) });
+      alert('Member added successfully!');
+      viewProjectDetails(projectId);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to add member');
     }
   };
 
   const updateMemberRole = async (projectId: string, userId: string, role: string) => {
     try {
-      const response = await axios.put(`http://localhost:3001/api/projects/${projectId}/members/${userId}`, {
-        role
-      });
-      if (response.data.success) {
-        alert('Role updated successfully!');
-        viewProjectDetails(projectId);
-      }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to update role');
+      await apiRequest(`/projects/${projectId}/members/${userId}`, { method: 'PUT', body: JSON.stringify({ role }) });
+      alert('Role updated successfully!');
+      viewProjectDetails(projectId);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update role');
     }
   };
 
   const removeMember = async (projectId: string, userId: string) => {
     if (!confirm('Remove this member from the project?')) return;
     try {
-      const response = await axios.delete(`http://localhost:3001/api/projects/${projectId}/members/${userId}`);
-      if (response.data.success) {
-        alert('Member removed successfully!');
-        viewProjectDetails(projectId);
-      }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to remove member');
+      await apiRequest(`/projects/${projectId}/members/${userId}`, { method: 'DELETE' });
+      alert('Member removed successfully!');
+      viewProjectDetails(projectId);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to remove member');
     }
   };
 
@@ -152,6 +161,22 @@ export default function Projects() {
           {showForm ? 'Cancel' : 'Create Project'}
         </button>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+          <AlertCircle size={20} className="text-red-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-red-800">{error}</p>
+          </div>
+          <button
+            onClick={fetchProjects}
+            className="px-3 py-1.5 bg-white text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors text-sm"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Create Project Form */}
       {showForm && (
@@ -261,7 +286,7 @@ export default function Projects() {
                 <button
                   onClick={() => {
                     localStorage.setItem('currentProjectId', project.id);
-                    window.location.href = '/connections';
+                    navigate('/connections');
                   }}
                   className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                 >
