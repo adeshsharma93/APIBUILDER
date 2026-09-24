@@ -5,21 +5,48 @@ import { useStore } from '../store/useStore';
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
+// Mapped to the MySQL `projects` table (server/migrations/mysql/002_users_projects.sql):
+//   id CHAR(36)             -> id
+//   name VARCHAR(100)       -> name
+//   description TEXT        -> description
+//   owner_id CHAR(36) FK    -> owner_id (users.id)
+//   created_at TIMESTAMP    -> created_at
+//   updated_at TIMESTAMP    -> updated_at (not currently selected by the API)
+//   u.username as owner_name -> owner_name (JOIN alias from GET /api/projects)
 interface Project {
-  id: string;
-  name: string;
-  description: string | null;
-  owner_id: string;
-  owner_name: string;
-  created_at: string;
-  members?: any[];
+  id: string;             // projects.id
+  name: string;           // projects.name
+  description: string | null; // projects.description (TEXT, nullable)
+  owner_id: string;       // projects.owner_id (FK -> users.id)
+  owner_name: string;     // JOIN alias: users.username AS owner_name
+  created_at: string;     // projects.created_at (TIMESTAMP)
+  updated_at?: string;    // projects.updated_at (TIMESTAMP, if present)
+  members?: ProjectMember[]; // project_members rows (details endpoint only)
+}
+
+// Mapped to the MySQL `project_members` table:
+//   id CHAR(36)                 -> id
+//   project_id CHAR(36) FK      -> project_id
+//   user_id CHAR(36) FK         -> user_id
+//   role ENUM(...)              -> role (member role in this project)
+//   joined_at TIMESTAMP         -> joined_at
+//   + JOIN aliases: u.username, u.email, u.role AS user_role
+interface ProjectMember {
+  id: string;             // project_members.id
+  project_id: string;     // project_members.project_id
+  user_id: string;        // project_members.user_id
+  role: 'admin' | 'developer' | 'viewer'; // project_members.role (ENUM)
+  joined_at: string;      // project_members.joined_at (TIMESTAMP)
+  username: string;       // JOIN alias: users.username
+  email: string;          // JOIN alias: users.email
+  user_role: string;      // JOIN alias: users.role (account-level role)
 }
 
 interface User {
-  id: string;
-  username: string;
-  email: string;
-  role: string;
+  id: string;       // users.id
+  username: string; // users.username
+  email: string;    // users.email
+  role: string;     // users.role (ENUM)
 }
 
 async function apiRequest<T = any>(path: string, options: RequestInit = {}): Promise<T> {
@@ -255,7 +282,7 @@ export default function Projects() {
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Project Name <span className="text-xs font-normal text-gray-400">(projects.name)</span></label>
                 <input
                   type="text"
                   placeholder="Enter project name"
@@ -266,7 +293,7 @@ export default function Projects() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Project Owner</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Project Owner <span className="text-xs font-normal text-gray-400">(projects.owner_id → users.id)</span></label>
                 <select
                   value={formData.ownerId}
                   onChange={(e) => setFormData({ ...formData, ownerId: e.target.value })}
@@ -280,7 +307,7 @@ export default function Projects() {
                 </select>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional) <span className="text-xs font-normal text-gray-400">(projects.description)</span></label>
                 <textarea
                   placeholder="Enter project description"
                   value={formData.description}
@@ -398,7 +425,7 @@ export default function Projects() {
               Project Members
             </h3>
             <div className="space-y-3 mb-6">
-              {selectedProject.members?.map((member: any) => (
+              {selectedProject.members?.map((member) => (
                 <div key={member.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg border border-gray-100">
                   <div className="flex items-center gap-3">
                     <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -407,6 +434,7 @@ export default function Projects() {
                     <div>
                       <p className="font-medium text-gray-900">{member.username}</p>
                       <p className="text-sm text-gray-500">{member.email}</p>
+                      <p className="text-xs text-gray-400">Joined {new Date(member.joined_at).toLocaleDateString()} · project_members.role</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
