@@ -11,7 +11,7 @@ const router = Router();
  */
 router.get('/execute/:apiId', authenticateApiKey, async (req: Request, res: Response) => {
   const startTime = Date.now();
-  const apiId = req.params.apiId;
+  const apiId = req.params.apiId as string;
 
   try {
     // Check API access
@@ -76,7 +76,7 @@ router.get('/execute/:apiId', authenticateApiKey, async (req: Request, res: Resp
  */
 router.post('/execute/:apiId', authenticateApiKey, async (req: Request, res: Response) => {
   const startTime = Date.now();
-  const apiId = req.params.apiId;
+  const apiId = req.params.apiId as string;
 
   try {
     // Check API access

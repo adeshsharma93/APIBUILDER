@@ -109,7 +109,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    const connection = await connectionService.getConnectionById(req.params.id, projectId);
+    const connection = await connectionService.getConnectionById(req.params.id as string, projectId);
     if (!connection) {
       return res.status(404).json({
         success: false,
@@ -140,7 +140,7 @@ router.post('/:id/test', async (req: Request, res: Response) => {
       });
     }
 
-    const connection = await connectionService.getConnectionById(req.params.id, projectId);
+    const connection = await connectionService.getConnectionById(req.params.id as string, projectId);
     if (!connection) {
       return res.status(404).json({
         success: false,
@@ -169,7 +169,7 @@ router.post('/:id/test', async (req: Request, res: Response) => {
     }
     
     // Update connection status
-    await connectionService.updateConnection(req.params.id, projectId, {
+    await connectionService.updateConnection(req.params.id as string, projectId, {
       status: 'connected',
       last_tested_at: new Date(),
     });
@@ -199,7 +199,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     const updates = req.body;
-    const connection = await connectionService.updateConnection(req.params.id, projectId, updates);
+    const connection = await connectionService.updateConnection(req.params.id as string, projectId, updates);
     
     if (!connection) {
       return res.status(404).json({
@@ -232,7 +232,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    const deleted = await connectionService.deleteConnection(req.params.id, projectId);
+    const deleted = await connectionService.deleteConnection(req.params.id as string, projectId);
     if (!deleted) {
       return res.status(404).json({
         success: false,
