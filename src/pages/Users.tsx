@@ -4,7 +4,8 @@ import { useStore } from '../store/useStore';
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
-// Mapped to the MySQL `users` table (server/migrations/mysql/002_users_projects.sql):
+// Mapped to the MySQL `users` table canonical schema
+// (server/migrations/mysql/002_users_projects.sql + 003_add_username_to_users.sql):
 //   id CHAR(36)            -> id
 //   username VARCHAR(50)   -> username
 //   email VARCHAR(100)     -> email
