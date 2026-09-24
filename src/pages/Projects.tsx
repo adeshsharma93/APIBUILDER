@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FolderPlus, Users, UserPlus, X, Check, Trash2, Settings, AlertCircle } from 'lucide-react';
+import { useStore } from '../store/useStore';
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
@@ -38,12 +39,21 @@ async function apiRequest<T = any>(path: string, options: RequestInit = {}): Pro
   return data as T;
 }
 
+// Fallback demo users so the owner selector works even when the backend is down
+const DEMO_USERS: User[] = [
+  { id: 'demo-user-1', username: 'Admin User', email: 'admin@sqlapi.dev', role: 'admin' },
+  { id: 'demo-user-2', username: 'Developer User', email: 'dev@sqlapi.dev', role: 'developer' },
+];
+
 export default function Projects() {
   const navigate = useNavigate();
+  const { addToast } = useStore();
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [formData, setFormData] = useState({
@@ -63,13 +73,11 @@ export default function Projects() {
     try {
       const result = await apiRequest<{ success: boolean; data: Project[] }>('/projects');
       setProjects(result.data ?? []);
+      setOffline(false);
     } catch (err: any) {
       console.error('Error fetching projects:', err);
-      setError(
-        err?.message === 'Failed to fetch'
-          ? 'Cannot connect to server. Please check if the backend is running on port 3001.'
-          : err?.message || 'Failed to fetch projects'
-      );
+      // Backend unreachable – keep local list instead of a blank page
+      setOffline(true);
     } finally {
       setLoading(false);
     }
@@ -81,19 +89,50 @@ export default function Projects() {
       setUsers(result.data ?? []);
     } catch (error) {
       console.error('Error fetching users:', error);
+      setUsers((prev) => (prev.length > 0 ? prev : DEMO_USERS));
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.name.trim()) {
+      addToast('error', 'Project name is required');
+      return;
+    }
+    if (!formData.ownerId) {
+      addToast('error', 'Please select a project owner');
+      return;
+    }
+    setSaving(true);
     try {
       await apiRequest('/projects', { method: 'POST', body: JSON.stringify(formData) });
-      alert('Project created successfully!');
+      addToast('success', 'Project created successfully!');
       setFormData({ name: '', description: '', ownerId: '' });
       setShowForm(false);
       fetchProjects();
     } catch (err: any) {
-      alert(err?.message || 'Failed to create project');
+      if (offline) {
+        // Local fallback creation while backend is down
+        const owner = users.find((u) => u.id === formData.ownerId);
+        const newProject: Project = {
+          id: `local-${Date.now()}`,
+          name: formData.name.trim(),
+          description: formData.description.trim() || null,
+          owner_id: formData.ownerId,
+          owner_name: owner?.username || 'Unknown',
+          created_at: new Date().toISOString(),
+          members: [],
+        };
+        setProjects((prev) => [newProject, ...prev]);
+        addToast('warning', 'Backend offline – project added locally only (not persisted to the database).');
+        setFormData({ name: '', description: '', ownerId: '' });
+        setShowForm(false);
+      } else {
+        addToast('error', err?.message || 'Failed to create project');
+        setError(err?.message || 'Failed to create project');
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -102,27 +141,38 @@ export default function Projects() {
       const result = await apiRequest<{ success: boolean; data: Project }>(`/projects/${projectId}`);
       setSelectedProject(result.data);
     } catch (err: any) {
-      alert(err?.message || 'Error fetching project details');
+      // Backend unreachable – show the locally-known project data instead of failing
+      const local = projects.find((p) => p.id === projectId);
+      if (local) {
+        setSelectedProject(local);
+        addToast('warning', 'Backend offline – showing locally cached project details.');
+      } else {
+        addToast('error', err?.message || 'Error fetching project details');
+      }
     }
   };
 
   const addMember = async (projectId: string, userId: string, role: string) => {
+    if (!userId) {
+      addToast('error', 'Please select a user to add');
+      return;
+    }
     try {
       await apiRequest(`/projects/${projectId}/members`, { method: 'POST', body: JSON.stringify({ userId, role }) });
-      alert('Member added successfully!');
+      addToast('success', 'Member added successfully!');
       viewProjectDetails(projectId);
     } catch (err: any) {
-      alert(err?.message || 'Failed to add member');
+      addToast('error', err?.message || 'Failed to add member');
     }
   };
 
   const updateMemberRole = async (projectId: string, userId: string, role: string) => {
     try {
       await apiRequest(`/projects/${projectId}/members/${userId}`, { method: 'PUT', body: JSON.stringify({ role }) });
-      alert('Role updated successfully!');
+      addToast('success', 'Role updated successfully!');
       viewProjectDetails(projectId);
     } catch (err: any) {
-      alert(err?.message || 'Failed to update role');
+      addToast('error', err?.message || 'Failed to update role');
     }
   };
 
@@ -130,10 +180,10 @@ export default function Projects() {
     if (!confirm('Remove this member from the project?')) return;
     try {
       await apiRequest(`/projects/${projectId}/members/${userId}`, { method: 'DELETE' });
-      alert('Member removed successfully!');
+      addToast('success', 'Member removed successfully!');
       viewProjectDetails(projectId);
     } catch (err: any) {
-      alert(err?.message || 'Failed to remove member');
+      addToast('error', err?.message || 'Failed to remove member');
     }
   };
 
@@ -162,18 +212,35 @@ export default function Projects() {
         </button>
       </div>
 
-      {/* Error Banner */}
-      {error && (
+      {/* Offline / Error Banners */}
+      {offline && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+          <AlertCircle size={20} className="text-amber-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-800">
+              Backend is not reachable on port 3001 – changes are local only and will not be saved to the database.
+            </p>
+            <p className="text-xs text-amber-700 mt-1">Start the server with <code className="bg-amber-100 px-1 rounded">npm run dev</code> inside the <code className="bg-amber-100 px-1 rounded">server/</code> folder, then retry.</p>
+          </div>
+          <button
+            onClick={fetchProjects}
+            className="px-3 py-1.5 bg-white text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors text-sm"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {!offline && error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
           <AlertCircle size={20} className="text-red-600 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
             <p className="text-sm font-medium text-red-800">{error}</p>
           </div>
           <button
-            onClick={fetchProjects}
+            onClick={() => setError(null)}
             className="px-3 py-1.5 bg-white text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors text-sm"
           >
-            Retry
+            Dismiss
           </button>
         </div>
       )}
@@ -226,9 +293,10 @@ export default function Projects() {
             <div className="mt-4 flex justify-end">
               <button 
                 type="submit" 
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm"
+                disabled={saving}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Create Project
+                {saving ? 'Creating...' : 'Create Project'}
               </button>
             </div>
           </form>

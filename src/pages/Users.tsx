@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { UserPlus, Trash2, Mail, Calendar, AlertCircle } from 'lucide-react';
+import { useStore } from '../store/useStore';
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
@@ -28,10 +29,19 @@ async function apiRequest<T = any>(path: string, options: RequestInit = {}): Pro
   return data as T;
 }
 
+// Fallback demo data so the page still works when the backend is unavailable
+const DEMO_USERS: User[] = [
+  { id: 'demo-user-1', username: 'Admin User', email: 'admin@sqlapi.dev', role: 'admin', created_at: new Date().toISOString() },
+  { id: 'demo-user-2', username: 'Developer User', email: 'dev@sqlapi.dev', role: 'developer', created_at: new Date().toISOString() },
+];
+
 export default function Users() {
+  const { addToast } = useStore();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
@@ -50,13 +60,12 @@ export default function Users() {
     try {
       const result = await apiRequest<{ success: boolean; data: User[] }>('/users');
       setUsers(result.data ?? []);
+      setOffline(false);
     } catch (err: any) {
       console.error('Error fetching users:', err);
-      setError(
-        err?.message === 'Failed to fetch'
-          ? 'Cannot connect to server. Please check if the backend is running on port 3001.'
-          : err?.message || 'Failed to fetch users'
-      );
+      // Backend unreachable – fall back to local demo data instead of a blank page
+      setUsers((prev) => (prev.length > 0 ? prev : DEMO_USERS));
+      setOffline(true);
     } finally {
       setLoading(false);
     }
@@ -64,35 +73,68 @@ export default function Users() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.username.trim() || !formData.email.trim() || !formData.password) {
+      addToast('error', 'Username, email, and password are required');
+      return;
+    }
+    setSaving(true);
     try {
       await apiRequest('/users', { method: 'POST', body: JSON.stringify(formData) });
-      alert('User created successfully!');
+      addToast('success', 'User created successfully!');
       setFormData({ username: '', email: '', password: '', role: 'developer' });
       setShowForm(false);
       fetchUsers();
     } catch (err: any) {
-      alert(err?.message || 'Failed to create user');
+      if (offline) {
+        // Local fallback creation while backend is down
+        const newUser: User = {
+          id: `local-${Date.now()}`,
+          username: formData.username.trim(),
+          email: formData.email.trim(),
+          role: formData.role,
+          created_at: new Date().toISOString(),
+        };
+        setUsers((prev) => [newUser, ...prev]);
+        addToast('warning', 'Backend offline – user added locally only (not persisted to the database).');
+        setFormData({ username: '', email: '', password: '', role: 'developer' });
+        setShowForm(false);
+      } else {
+        addToast('error', err?.message || 'Failed to create user');
+        setError(err?.message || 'Failed to create user');
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleRoleChange = async (userId: string, newRole: string) => {
+    if (offline) {
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole as User['role'] } : u)));
+      addToast('warning', 'Backend offline – role changed locally only.');
+      return;
+    }
     try {
       await apiRequest(`/users/${userId}/role`, { method: 'PUT', body: JSON.stringify({ role: newRole }) });
-      alert('Role updated successfully!');
+      addToast('success', 'Role updated successfully!');
       fetchUsers();
     } catch (err: any) {
-      alert(err?.message || 'Failed to update role');
+      addToast('error', err?.message || 'Failed to update role');
     }
   };
 
   const handleDelete = async (userId: string) => {
     if (!confirm('Are you sure you want to delete this user?')) return;
+    if (offline) {
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+      addToast('warning', 'Backend offline – user removed locally only.');
+      return;
+    }
     try {
       await apiRequest(`/users/${userId}`, { method: 'DELETE' });
-      alert('User deleted successfully!');
+      addToast('success', 'User deleted successfully!');
       fetchUsers();
     } catch (err: any) {
-      alert(err?.message || 'Failed to delete user');
+      addToast('error', err?.message || 'Failed to delete user');
     }
   };
 
@@ -129,6 +171,37 @@ export default function Users() {
           {showForm ? 'Cancel' : 'Add User'}
         </button>
       </div>
+
+      {/* Offline / Error Banners */}
+      {offline && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+          <AlertCircle size={20} className="text-amber-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-800">
+              Backend is not reachable on port 3001 – showing demo data. Changes are local only and will not be saved to the database.
+            </p>
+            <p className="text-xs text-amber-700 mt-1">Start the server with <code className="bg-amber-100 px-1 rounded">npm run dev</code> inside the <code className="bg-amber-100 px-1 rounded">server/</code> folder, then retry.</p>
+          </div>
+          <button
+            onClick={fetchUsers}
+            className="px-3 py-1.5 bg-white text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors text-sm"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {!offline && error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+          <AlertCircle size={20} className="text-red-600 mt-0.5 flex-shrink-0" />
+          <p className="text-sm font-medium text-red-800 flex-1">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="px-3 py-1.5 bg-white text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors text-sm"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Add User Form */}
       {showForm && (
@@ -188,9 +261,10 @@ export default function Users() {
             <div className="mt-4 flex justify-end">
               <button 
                 type="submit" 
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm"
+                disabled={saving}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Create User
+                {saving ? 'Creating...' : 'Create User'}
               </button>
             </div>
           </form>
