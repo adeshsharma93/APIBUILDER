@@ -4,12 +4,21 @@ import { useStore } from '../store/useStore';
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
+// Mapped to the MySQL `users` table (server/migrations/mysql/002_users_projects.sql):
+//   id CHAR(36)            -> id
+//   username VARCHAR(50)   -> username
+//   email VARCHAR(100)     -> email
+//   password_hash          -> (write-only via API; never returned by GET /api/users)
+//   role ENUM(...)         -> role
+//   created_at TIMESTAMP   -> created_at
+//   updated_at TIMESTAMP   -> updated_at (not currently selected by the API)
 interface User {
-  id: string;
-  username: string;
-  email: string;
-  role: 'admin' | 'developer' | 'viewer';
-  created_at: string;
+  id: string;             // users.id
+  username: string;       // users.username
+  email: string;          // users.email
+  role: 'admin' | 'developer' | 'viewer'; // users.role (ENUM)
+  created_at: string;     // users.created_at (TIMESTAMP)
+  updated_at?: string;    // users.updated_at (TIMESTAMP, if present)
 }
 
 async function apiRequest<T = any>(path: string, options: RequestInit = {}): Promise<T> {
@@ -213,7 +222,7 @@ export default function Users() {
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Username <span className="text-xs font-normal text-gray-400">(users.username)</span></label>
                 <input
                   type="text"
                   placeholder="Enter username"
@@ -224,7 +233,7 @@ export default function Users() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-xs font-normal text-gray-400">(users.email)</span></label>
                 <input
                   type="email"
                   placeholder="Enter email"
@@ -235,7 +244,7 @@ export default function Users() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password <span className="text-xs font-normal text-gray-400">(→ users.password_hash, bcrypt)</span></label>
                 <input
                   type="password"
                   placeholder="Enter password"
@@ -246,7 +255,7 @@ export default function Users() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role <span className="text-xs font-normal text-gray-400">(users.role ENUM)</span></label>
                 <select
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
@@ -277,10 +286,11 @@ export default function Users() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                {/* Column labels mirror the MySQL `users` schema */}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username <span className="normal-case font-normal text-gray-400">(users.username)</span></th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email <span className="normal-case font-normal text-gray-400">(users.email)</span></th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role <span className="normal-case font-normal text-gray-400">(users.role)</span></th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created At <span className="normal-case font-normal text-gray-400">(users.created_at)</span></th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
